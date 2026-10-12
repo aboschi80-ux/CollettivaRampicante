@@ -1082,3 +1082,29 @@ body {
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     }
 }
+
+/* ===== Logo navbar (mappa) e pianta hero ===== */
+.nav-logo-img { height: 48px; width: auto; display: block; flex-shrink: 0; filter: contrast(1.6); }
+.hero-plant { height: 2.2em; flex-shrink: 0; width: auto; vertical-align: middle; margin-right: 0.15em; filter: drop-shadow(1px 1px 3px rgba(0,0,0,0.25)); }
+
+/* ===== Chi Siamo: persone alternate sx/dx ===== */
+.person-list { display: flex; flex-direction: column; gap: 50px; margin-top: 30px; }
+.person-row { display: flex; gap: 30px; align-items: flex-start; }
+.person-row:nth-child(even) { flex-direction: row-reverse; }
+.person-photo { flex: 0 0 250px; width: 250px; height: 250px; object-fit: cover; border-radius: 8px; }
+.person-body { flex: 1; min-width: 0; }
+@media (max-width: 768px) {
+    .person-row, .person-row:nth-child(even) { flex-direction: column; align-items: center; }
+    .person-photo { flex: 0 0 auto; width: 100%; max-width: 300px; height: 300px; }
+}
+
+/* ===== Lightbox galleria con frecce ===== */
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.lightbox-img { max-width: 90%; max-height: 88%; object-fit: contain; border-radius: 4px; user-select: none; }
+.lightbox-btn { position: absolute; background: rgba(255,255,255,0.15); color: #fff; border: none; cursor: pointer; font-size: 1.8rem; line-height: 1; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: background .2s; }
+.lightbox-btn:hover { background: rgba(255,255,255,0.35); }
+.lightbox-prev { left: 16px; top: 50%; transform: translateY(-50%); }
+.lightbox-next { right: 16px; top: 50%; transform: translateY(-50%); }
+.lightbox-close { top: 16px; right: 16px; font-size: 1.6rem; }
+.lightbox-counter { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 0.95rem; opacity: .85; }
+@media (max-width: 600px) { .lightbox-btn { width: 44px; height: 44px; } .lightbox-prev { left: 6px; } .lightbox-next { right: 6px; } }
