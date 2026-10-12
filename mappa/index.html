@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TALEE SEMI — Semi da coltivare | Savena, Bologna</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Fraunces:opsz,wght@9..144,400;9..144,600&display=swap" rel="stylesheet">
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/@maplibre/maplibre-gl-geocoder@1.5.0/dist/maplibre-gl-geocoder.css" type="text/css" />
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@maplibre/maplibre-gl-geocoder@1.5.0/dist/maplibre-gl-geocoder.min.js"></script>
+
+    <!--
+      =========================================================================
+      TALEE SEMI — Semi da coltivare
+      Archivio 3D del patrimonio arboreo di Fossolo · Due Madonne (Bologna)
+      -------------------------------------------------------------------------
+      FONTI DATI (tutte via API, nessun file locale richiesto):
+        · Alberi          → Open Data Bologna, "alberi-manutenzioni"
+        · Edifici 3D      → Open Data Bologna, "c_a944ctc_edifici_pl"
+                            (Carta Tecnica Comunale, edifici volumetrici:
+                             altezza = quota di gronda − quota al piede)
+        · Aree verdi      → Open Data Bologna, "un_gest" (unità gestionali)
+        · Confini         → Open Data Bologna, "quartieri-di-bologna" (Savena)
+        · Rilievo         → raster-DEM terrarium (AWS elevation tiles)
+        · Basemap         → CARTO Voyager
+      ARCHIVIO UTENTE: cartella locale (File System Access API) con
+        contributi.geojson + MEDIA/{images,audio,video}
+      =========================================================================
+    -->
+    <style>
+        :root {
+            /* --- palette di progetto --------------------------------------- */
+            --verde-chiaro: #A7C957;   /* alberi censiti */
+            --verde-medio:  #6A994E;   /* verde pubblico generico */
+            --verde-scuro:  #386641;   /* parchi e boschi */
+            --crema:        #F2E8CF;   /* edificato e superfici neutre */
+            --rosso:        #BC4749;   /* accento: voci, selezione, allarme */
+
+            /* --- ruoli d'interfaccia, derivati dalla palette ---------------- */
+            --ink: #22301c;
+            --ink-soft: #4a5c40;
+            --paper: #F2E8CF;
+            --leaf: #6A994E;
+            --leaf-bright: #A7C957;
+            --bark: #5c4a33;
+            --seed: #BC4749;
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            background: var(--paper); color: var(--ink);
+            font-family: 'Courier Prime', monospace; overflow: hidden;
+        }
+        h1, h2, .display { font-family: 'Fraunces', serif; }
+
+        /* ---------------- INTRO ---------------- */
+        #intro-veil {
+            position: fixed; inset: 0; z-index: 4000;
+            background: radial-gradient(ellipse at 50% 40%, #FBF7E9 0%, #E2E3C6 55%, #B7C79B 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 1.4s ease, visibility 1.4s;
+        }
+        body.view-map #intro-veil { opacity: 0; visibility: hidden; }
+
+        #intro-veil h1 {
+            font-size: clamp(40px, 8vw, 92px); margin: 0; letter-spacing: 4px;
+            font-weight: 600; color: var(--ink); line-height: 1;
+        }
+        #intro-veil .sub {
+            margin-top: 14px; font-size: clamp(12px, 2vw, 17px); letter-spacing: 7px;
+            text-transform: uppercase; color: var(--leaf);
+        }
+        #intro-veil .place {
+            margin-top: 34px; font-size: 13px; letter-spacing: 2px; color: var(--ink-soft); opacity: .75;
+        }
+        #intro-card {
+            margin-top: 34px; max-width: 620px; background: rgba(255,255,255,.82);
+            border-radius: 14px; padding: 26px 30px; font-size: 14px; line-height: 1.75;
+            box-shadow: 0 18px 44px rgba(20,33,15,.14); text-align: left;
+        }
+        #intro-card .todo { margin: 0; text-align: center; }
+
+        /* segnaposto redazionali: si vedono, ma non gridano */
+        .todo {
+            border: 1px dashed rgba(188,71,73,.55); border-radius: 8px;
+            background: rgba(188,71,73,.06); color: #8d3436;
+            padding: 13px 15px; font-size: 12px; letter-spacing: 1.4px;
+            line-height: 1.7; text-transform: uppercase;
+        }
+        .todo em { text-transform: none; letter-spacing: .3px; font-style: normal; opacity: .85; display: block; margin-top: 6px; }
+        #btn-enter {
+            margin-top: 28px; background: var(--ink); color: #fff; border: none;
+            padding: 18px 42px; border-radius: 40px; font-family: 'Courier Prime', monospace;
+            font-size: 15px; font-weight: 700; letter-spacing: 2px; cursor: pointer;
+            box-shadow: 0 12px 30px rgba(20,33,15,.3); transition: transform .25s, background .25s;
+        }
+        #btn-enter:hover { transform: translateY(-2px) scale(1.03); background: #24351d; }
+
+        /* ---------------- MAPPA ---------------- */
+        #map { position: absolute; inset: 0; background: #E4E2C9; }
+        #vignette {
+            position: absolute; inset: 0; pointer-events: none; z-index: 5;
+            box-shadow: inset 0 0 200px 70px rgba(16,28,12,.32); mix-blend-mode: multiply;
+        }
+
+        /* ---------------- BARRA SUPERIORE (unico pannello persistente) ---------------- */
+        #topbar {
+            position: absolute; top: 18px; left: 18px; z-index: 1200;
+            display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+            width: 300px; max-width: calc(100vw - 36px);
+        }
+        #brand {
+            background: rgba(255,255,255,.9); backdrop-filter: blur(10px);
+            border: 1px solid rgba(20,33,15,.12); border-radius: 10px;
+            padding: 10px 16px; box-shadow: 0 6px 18px rgba(20,33,15,.12);
+            display: flex; flex-direction: column; cursor: pointer;
+        }
+        #brand strong { font-family: 'Fraunces', serif; font-size: 18px; letter-spacing: 2px; }
+        #brand span { font-size: 9px; letter-spacing: 3px; color: var(--leaf); text-transform: uppercase; }
+
+        /* Caricamento: una riga sottile in cima, che sparisce a dati pronti. */
+        #loading {
+            position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 3500;
+            background: rgba(34,48,28,.08); opacity: 0; transition: opacity .5s; pointer-events: none;
+        }
+        body.loading #loading { opacity: 1; }
+        #loading span {
+            display: block; height: 100%; width: 34%;
+            background: linear-gradient(90deg, transparent, var(--verde-medio), transparent);
+            animation: slide 1.5s ease-in-out infinite;
+        }
+        @keyframes slide { 0% { transform: translateX(-40%); } 100% { transform: translateX(320%); } }
+
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; overflow: hidden;
+            clip: rect(0 0 0 0); white-space: nowrap;
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+        /* ---------------- AZIONI (angolo in basso a destra) ---------------- */
+        /* In basso al centro: non può più finire dietro il marchio, e regge
+           tanto un solo pulsante quanto tre. */
+        #actions {
+            position: absolute; left: 50%; transform: translateX(-50%); bottom: 26px;
+            z-index: 1200; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+            max-width: calc(100vw - 36px);
+        }
+        .action-btn {
+            background: rgba(255,255,255,.92); backdrop-filter: blur(8px); color: var(--ink);
+            border: 1px solid rgba(20,33,15,.16); border-radius: 10px; padding: 14px 18px;
+            font-family: 'Courier Prime', monospace; font-weight: 700; font-size: 13px;
+            cursor: pointer; display: flex; align-items: center; gap: 8px;
+            box-shadow: 0 8px 22px rgba(20,33,15,.14); transition: all .25s;
+        }
+        .action-btn:hover { transform: translateY(-2px); background: #fff; }
+        .action-btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+        .action-btn.primary:hover { background: #24351d; }
+
+        /* La modalità decide quali comandi esistono: in consultazione non c'è
+           nessun pulsante che scriva qualcosa. */
+        body.web #btn-archive, body.web #btn-plant, body.web #btn-publish { display: none; }
+        body.studio #btn-partecipa { display: none; }
+
+        #hint {
+            position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%);
+            background: rgba(20,33,15,.86); color: #fff; padding: 9px 18px; border-radius: 20px;
+            font-size: 12px; letter-spacing: .5px; z-index: 1200; display: none;
+        }
+        body.adding-mode #map, body.adding-mode .maplibregl-canvas-container { cursor: crosshair !important; }
+
+        /* ---------------- SIDEBAR: SOTTO-ARCHIVIO DELL'ALBERO ---------------- */
+        #sidebar {
+            position: absolute; top: 0; right: -560px; width: 520px; max-width: 100%; height: 100%;
+            background: rgba(250,249,244,.97); backdrop-filter: blur(18px);
+            border-left: 1px solid rgba(20,33,15,.12); z-index: 2500;
+            transition: right .55s cubic-bezier(.22,.9,.28,1);
+            box-sizing: border-box; display: flex; flex-direction: column;
+            box-shadow: -14px 0 40px rgba(20,33,15,.14);
+        }
+        #sidebar.open { right: 0; }
+
+        #sb-head { padding: 34px 34px 0 34px; position: relative; }
+        #sb-head .close {
+            position: absolute; top: 20px; right: 26px; font-size: 28px; cursor: pointer; opacity: .45;
+        }
+        #sb-head .close:hover { opacity: 1; }
+        #sb-head h2 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+        #sb-head .meta {
+            margin-top: 8px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+            color: var(--ink-soft); display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+        }
+        .badge { background: var(--ink); color: #fff; border-radius: 4px; padding: 3px 8px; font-size: 10px; }
+        .badge.seed { background: var(--seed); }
+        .badge.ghost { background: transparent; color: var(--ink-soft); border: 1px solid rgba(20,33,15,.25); }
+
+        /* menù del sotto-archivio */
+        #sb-tabs {
+            display: flex; gap: 4px; padding: 22px 34px 0 34px; border-bottom: 1px solid rgba(20,33,15,.12);
+        }
+        .sb-tab {
+            background: transparent; border: none; border-bottom: 2px solid transparent;
+            padding: 10px 12px; font-family: 'Courier Prime', monospace; font-size: 12px;
+            letter-spacing: 1.5px; cursor: pointer; color: var(--ink-soft); text-transform: uppercase;
+        }
+        .sb-tab.active { color: var(--ink); border-bottom-color: var(--ink); font-weight: 700; }
+        .sb-tab .count {
+            display: inline-block; margin-left: 6px; background: rgba(20,33,15,.1);
+            border-radius: 10px; padding: 1px 7px; font-size: 10px;
+        }
+        #sb-body { flex: 1; overflow-y: auto; padding: 26px 34px 40px 34px; }
+
+        .data-row {
+            display: flex; justify-content: space-between; gap: 16px; padding: 11px 0;
+            border-bottom: 1px dashed rgba(20,33,15,.14); font-size: 14px;
+        }
+        .data-row .k { color: var(--ink-soft); letter-spacing: .5px; }
+        .data-row .v { font-weight: 700; text-align: right; }
+
+        .voice {
+            background: #fff; border: 1px solid rgba(20,33,15,.1); border-radius: 10px;
+            padding: 18px; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(20,33,15,.06);
+        }
+        .voice .who {
+            font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-soft);
+            display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+        }
+        .voice .swatch { width: 10px; height: 10px; border-radius: 50%; }
+        .voice p { margin: 0; line-height: 1.75; font-size: 15px; }
+        .voice img, .voice video { width: 100%; border-radius: 8px; margin-top: 12px; background: #111; max-height: 46vh; object-fit: contain; }
+        .voice audio { width: 100%; margin-top: 12px; }
+        .empty { color: var(--ink-soft); font-style: italic; line-height: 1.7; }
+
+        /* ---------------- MODALE CONTRIBUTO ---------------- */
+        #modal {
+            position: fixed; inset: 0; background: rgba(20,33,15,.28); backdrop-filter: blur(6px);
+            z-index: 3000; display: none; justify-content: center; align-items: center;
+        }
+        .modal-card {
+            background: rgba(250,249,244,.98); border-radius: 16px; padding: 34px;
+            width: 470px; max-width: 92%; max-height: 88vh; overflow-y: auto;
+            box-shadow: 0 26px 60px rgba(20,33,15,.28); animation: rise .35s ease-out;
+        }
+        @keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+        .modal-card h2 { margin: 0 0 6px 0; font-size: 22px; }
+        .modal-card .target { font-size: 12px; color: var(--leaf); letter-spacing: 1px; margin-bottom: 20px; }
+
+        label { display: block; margin-bottom: 7px; font-size: 12px; letter-spacing: 1px; color: var(--ink-soft); font-weight: 700; }
+        .fg { margin-bottom: 16px; }
+        input, textarea, select {
+            width: 100%; background: #fff; border: 1px solid rgba(20,33,15,.2); color: var(--ink);
+            padding: 11px; font-family: 'Courier Prime', monospace; box-sizing: border-box;
+            border-radius: 7px; font-size: 14px;
+        }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: var(--ink); }
+
+        .type-row { display: flex; gap: 7px; }
+        .type-btn {
+            flex: 1; background: transparent; border: 1px solid rgba(20,33,15,.2); border-radius: 7px;
+            padding: 11px 0; font-family: 'Courier Prime', monospace; font-size: 11px; font-weight: 700;
+            cursor: pointer; color: var(--ink-soft); transition: all .2s;
+        }
+        .type-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+        .btn {
+            width: 100%; padding: 14px; margin-top: 10px; background: var(--ink); color: #fff;
+            border: none; border-radius: 8px; font-family: 'Courier Prime', monospace;
+            font-weight: 700; cursor: pointer; letter-spacing: 1px;
+        }
+        .btn:hover { background: #24351d; }
+        .btn.ghost { background: transparent; color: var(--ink); border: 1px solid rgba(20,33,15,.25); }
+        .btn.ghost:hover { background: rgba(20,33,15,.06); }
+
+        .drop {
+            border: 2px dashed rgba(20,33,15,.28); border-radius: 10px; padding: 18px; text-align: center;
+            cursor: pointer; font-size: 12px; color: var(--ink-soft); background: rgba(255,255,255,.6);
+        }
+        .drop:hover { border-color: var(--ink); }
+        .drop img, .drop video { max-width: 100%; max-height: 130px; border-radius: 6px; display: none; margin-top: 8px; }
+        .hidden-input { display: none; }
+        .rec-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 10px; }
+        .rec-btn { background: #c0392b; color: #fff; border: none; border-radius: 7px; padding: 10px 18px; cursor: pointer; font-family: inherit; font-weight: 700; }
+        .rec-dot { width: 11px; height: 11px; background: red; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
+
+        /* ---------------- INFO MODAL ---------------- */
+        #info-modal {
+            position: fixed; inset: 0; background: rgba(20,33,15,.28); backdrop-filter: blur(6px);
+            z-index: 3200; display: none; justify-content: center; align-items: center;
+        }
+        #info-card {
+            background: rgba(250,249,244,.98); border-radius: 16px; padding: 36px; width: 620px;
+            max-width: 92%; max-height: 84vh; overflow-y: auto; position: relative;
+            box-shadow: 0 26px 60px rgba(20,33,15,.28); line-height: 1.7; font-size: 14px;
+        }
+        #info-card h2 { margin-top: 0; border-bottom: 2px solid var(--ink); padding-bottom: 12px; }
+        #info-card .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 16px 0; }
+        #info-card .legend span { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+        #info-card .legend i { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+        #info-card .close { position: absolute; top: 18px; right: 20px; font-size: 26px; cursor: pointer; border: none; background: none; }
+        #info-card .src { font-size: 11px; color: var(--ink-soft); border-top: 1px solid rgba(20,33,15,.15); padding-top: 14px; margin-top: 18px; }
+
+        /* ---------------- TOAST ---------------- */
+        #toasts { position: fixed; bottom: 108px; left: 50%; transform: translateX(-50%); z-index: 4200; pointer-events: none; }
+        .toast {
+            background: rgba(20,33,15,.94); color: #fff; padding: 12px 22px; border-radius: 30px;
+            font-size: 13px; margin-top: 8px; opacity: 0; transform: translateY(14px);
+            transition: all .35s; display: flex; align-items: center; gap: 9px;
+        }
+        .toast.show { opacity: 1; transform: none; }
+
+        /* ---------------- GEOCODER + CONTROLLI ---------------- */
+        #geo-slot { width: 100%; }
+        .maplibregl-ctrl-geocoder {
+            font-family: 'Courier Prime', monospace; border-radius: 30px !important;
+            width: 100% !important; max-width: 100% !important; min-width: 0 !important;
+            background: rgba(255,255,255,.94) !important;
+            box-shadow: 0 6px 18px rgba(34,48,28,.12) !important; border: 1px solid rgba(34,48,28,.12);
+        }
+        .maplibregl-ctrl-geocoder--input { font-family: 'Courier Prime', monospace !important; font-size: 13px !important; }
+        .maplibregl-ctrl-geocoder .suggestions { font-size: 12px; }
+        /* posizione di ripiego: vale solo se il geocoder non riesce a entrare nella barra */
+        .maplibregl-ctrl-top-left { top: 160px; left: 18px; z-index: 1100; }
+        .maplibregl-ctrl-top-right { top: 18px; right: 18px; z-index: 1100; }
+        .maplibregl-ctrl-bottom-right { z-index: 900; }
+
+        .site-pin {
+            width: 26px; height: 26px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+            background: var(--seed); border: 2px solid #fff; cursor: pointer;
+            box-shadow: 0 5px 14px rgba(20,33,15,.4); display: grid; place-items: center;
+        }
+        .site-pin .material-icons { transform: rotate(45deg); font-size: 14px; color: #fff; }
+        .site-pin:hover { transform: rotate(-45deg) scale(1.2); }
+
+        /* ---------------- LEGENDA ---------------- */
+        #legend {
+            position: absolute; left: 18px; bottom: 26px; z-index: 1200; max-width: 252px;
+            background: rgba(255,255,255,.93); backdrop-filter: blur(8px);
+            border: 1px solid rgba(34,48,28,.14); border-radius: 10px;
+            box-shadow: 0 8px 22px rgba(34,48,28,.14); overflow: hidden;
+        }
+        #legend-toggle {
+            width: 100%; background: transparent; border: none; cursor: pointer;
+            font-family: 'Courier Prime', monospace; font-size: 11px; font-weight: 700;
+            letter-spacing: 2px; padding: 11px 14px; color: var(--ink);
+            display: flex; justify-content: space-between; align-items: center; gap: 10px;
+        }
+        #legend-body { padding: 0 14px 12px 14px; max-height: 52vh; overflow-y: auto; }
+        .lg-src {
+            font-size: 10px; line-height: 1.6; color: var(--ink-soft);
+            border-top: 1px solid rgba(34,48,28,.14); padding-top: 9px; margin-top: 4px;
+        }
+        .lg-src p { margin: 0 0 7px 0; }
+        .lg-src strong { color: var(--ink); }
+        #legend.collapsed #legend-body { display: none; }
+        .lg-group {
+            font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+            color: var(--ink-soft); margin: 9px 0 5px 0;
+        }
+        .lg-item { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 2px 0; }
+        .lg-item i { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid rgba(34,48,28,.2); }
+
+        *:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+        @media (max-width: 820px) {
+            #sidebar { width: 100%; right: -100%; }
+            #topbar { width: calc(100vw - 36px); }
+            #actions { bottom: 14px; gap: 8px; }
+            .action-btn { padding: 12px 14px; font-size: 12px; }
+            #brand strong { font-size: 15px; }
+            #legend { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition-duration: .01ms !important; } }
+    </style>
+</head>
+<body>
+
+    <!-- ===================== INTRO ===================== -->
+    <div id="intro-veil">
+        <h1>TALEE SEMI</h1>
+        <div class="sub">Semi da coltivare</div>
+        <div class="place">Fossolo · Due Madonne · Savena — Bologna</div>
+
+        <div id="intro-card">
+            <p class="todo">DA MODIFICARE CON LE INDICAZIONI DELLA MAPPA</p>
+        </div>
+
+        <button id="btn-enter">ENTRA</button>
+    </div>
+
+    <!-- ===================== MAPPA ===================== -->
+    <div id="map"></div>
+    <div id="vignette"></div>
+    <div id="loading" aria-hidden="true"><span></span></div>
+
+    <!-- ===================== BARRA SUPERIORE ===================== -->
+    <div id="topbar">
+        <div id="brand" role="button" tabindex="0" title="Informazioni e legenda">
+            <strong>TALEE SEMI</strong>
+            <span>Semi da coltivare</span>
+        </div>
+        <div id="geo-slot"></div>
+        <p id="sr-status" class="sr-only" aria-live="polite"></p>
+    </div>
+
+    <!-- ===================== AZIONI ===================== -->
+    <div id="actions">
+        <button class="action-btn" id="btn-partecipa">
+            <span class="material-icons" style="font-size:18px;">volunteer_activism</span> COME PARTECIPARE
+        </button>
+        <button class="action-btn" id="btn-archive">
+            <span class="material-icons" style="font-size:18px;">folder_open</span> ARCHIVIO
+        </button>
+        <button class="action-btn" id="btn-publish">
+            <span class="material-icons" style="font-size:18px;">ios_share</span> PUBBLICA
+        </button>
+        <button class="action-btn primary" id="btn-plant">
+            <span class="material-icons" style="font-size:18px;">eco</span> PIANTA UNA TALEA
+        </button>
+    </div>
+
+    <div id="hint">SCEGLI UN PUNTO SULLA MAPPA</div>
+
+    <!-- ===================== LEGENDA ===================== -->
+    <div id="legend">
+        <button id="legend-toggle" aria-expanded="true">
+            LEGENDA <span class="material-icons" style="font-size:16px;">expand_more</span>
+        </button>
+        <div id="legend-body">
+            <div class="lg-group">Verde pubblico in manutenzione</div>
+            <div class="lg-item"><i style="background:#386641"></i> Parco, bosco</div>
+            <div class="lg-item"><i style="background:#5A9450"></i> Giardino, verde di quartiere</div>
+            <div class="lg-item"><i style="background:#7FA85C"></i> Impianto sportivo</div>
+            <div class="lg-item"><i style="background:#6A994E"></i> Altro verde comunale</div>
+            <div class="lg-item"><i style="background:#6A994E; opacity:.28"></i> Fuori dall'area a fuoco</div>
+
+            <div class="lg-group">Alberi</div>
+            <div class="lg-item"><i style="background:#A7C957"></i> Albero in manutenzione</div>
+            <div class="lg-item"><i style="background:#BC4749"></i> Con memorie raccolte</div>
+
+            <div class="lg-group">Costruito e confini</div>
+            <div class="lg-item"><i style="background:#F2E8CF"></i> Edificato (quota di gronda)</div>
+            <div class="lg-item"><i style="background:transparent; border:1px dashed #386641"></i> Confini di quartiere e comune</div>
+
+            <div class="lg-group">Da dove vengono i dati</div>
+            <div class="lg-src">
+                <p><strong>Alberi</strong> — Comune di Bologna, <em>Alberi in manutenzione</em>: esemplari arborei
+                tutelati, rilevati dal sistema che ne gestisce la manutenzione. Non è l'intero patrimonio arboreo:
+                è ciò che entra nel ciclo manutentivo comunale. Date d'impianto in inventario dal 2014.</p>
+                <p><strong>Aree verdi</strong> — Comune di Bologna, <em>Unità gestionali</em>: verde pubblico in
+                manutenzione (aiuole e piazze, giardini, parchi, laghetti, verde scolastico e sportivo, arredo
+                stradale). Censimento dal 2004, aggiornamento mensile. Il verde privato non è compreso.</p>
+                <p><strong>Edifici</strong> — Carta Tecnica Comunale 1:2000, edifici volumetrici: altezza calcolata
+                da quota di gronda meno quota al piede (tolleranza 54 cm).</p>
+                <p><strong>Confini</strong> — Quartieri di Bologna, Open Data comunale. San Lazzaro di Savena:
+                confine amministrativo da OpenStreetMap.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== SOTTO-ARCHIVIO DEL PUNTO ===================== -->
+    <aside id="sidebar" aria-hidden="true">
+        <div id="sb-head">
+            <div class="close" id="sb-close" role="button" tabindex="0">&times;</div>
+            <h2 id="sb-title">—</h2>
+            <div class="meta" id="sb-meta"></div>
+        </div>
+        <div id="sb-tabs">
+            <button class="sb-tab active" data-tab="scheda">Scheda</button>
+            <button class="sb-tab" data-tab="memoria">Memoria</button>
+            <button class="sb-tab" data-tab="voci">Voci di quartiere <span class="count" id="tab-count">0</span></button>
+        </div>
+        <div id="sb-body"></div>
+    </aside>
+
+    <!-- ===================== MODALE CONTRIBUTO ===================== -->
+    <div id="modal">
+        <div class="modal-card">
+            <h2>Aggiungi una memoria</h2>
+            <div class="target" id="modal-target">—</div>
+
+            <div class="fg">
+                <label>Chi sei</label>
+                <input type="text" id="in-name" placeholder="Nome, soprannome o iniziali">
+            </div>
+
+            <div class="fg">
+                <label>Che legame hai con questo punto</label>
+                <select id="in-role">
+                    <option value="memoria">Memoria — ci sono cresciuto/a</option>
+                    <option value="cura">Cura — me ne prendo cura</option>
+                    <option value="incontro">Incontro — ci si ritrova</option>
+                    <option value="ombra">Ombra — riparo e frescura</option>
+                    <option value="allarme">Allarme — è a rischio</option>
+                    <option value="futuro">Futuro — cosa vorrei diventasse</option>
+                </select>
+            </div>
+
+            <div class="fg">
+                <label>Colore ed emozione</label>
+                <div style="display:flex; gap:12px; align-items:center;">
+                    <input type="color" id="in-color" value="#6A994E" style="width:52px; height:44px; padding:3px;">
+                    <input type="text" id="in-emotion" placeholder="quiete, nostalgia, frescura…">
+                </div>
+            </div>
+
+            <div class="fg">
+                <label>Come vuoi raccontarlo</label>
+                <div class="type-row">
+                    <button class="type-btn active" data-type="text">TESTO</button>
+                    <button class="type-btn" data-type="image">FOTO</button>
+                    <button class="type-btn" data-type="audio">AUDIO</button>
+                    <button class="type-btn" data-type="video">VIDEO</button>
+                </div>
+            </div>
+
+            <div class="fg" id="grp-text">
+                <textarea id="in-text" rows="4" placeholder="Racconta perché questo albero, o questo spazio, conta."></textarea>
+            </div>
+
+            <div class="fg" id="grp-image" style="display:none;">
+                <div class="drop" id="drop-image">
+                    Trascina o clicca per scegliere una foto
+                    <img id="prev-image" alt="">
+                </div>
+                <input type="file" id="file-image" class="hidden-input" accept="image/*">
+                <textarea id="cap-image" rows="2" placeholder="Didascalia (facoltativa)" style="margin-top:10px;"></textarea>
+            </div>
+
+            <div class="fg" id="grp-audio" style="display:none;">
+                <div class="drop" id="drop-audio">Trascina o clicca per scegliere un audio</div>
+                <input type="file" id="file-audio" class="hidden-input" accept="audio/*">
+                <div class="rec-row">
+                    <button class="rec-btn" id="btn-rec">REGISTRA</button>
+                    <span id="rec-status" style="font-size:12px;"></span>
+                </div>
+                <audio id="prev-audio" controls style="width:100%; margin-top:10px; display:none;"></audio>
+                <textarea id="cap-audio" rows="2" placeholder="Di cosa parla questa voce?" style="margin-top:10px;"></textarea>
+            </div>
+
+            <div class="fg" id="grp-video" style="display:none;">
+                <div class="drop" id="drop-video">
+                    Trascina o clicca per scegliere un video
+                    <video id="prev-video" muted playsinline></video>
+                </div>
+                <input type="file" id="file-video" class="hidden-input" accept="video/*">
+                <textarea id="cap-video" rows="2" placeholder="Didascalia (facoltativa)" style="margin-top:10px;"></textarea>
+            </div>
+
+            <div class="fg">
+                <label>Visibilità</label>
+                <select id="in-privacy">
+                    <option value="public">Pubblica — visibile a tutti</option>
+                    <option value="private">Privata — solo nel tuo archivio</option>
+                </select>
+            </div>
+
+            <button class="btn" id="btn-save">AGGIUNGI ALLA MAPPA</button>
+            <button class="btn ghost" id="btn-cancel">ANNULLA</button>
+        </div>
+    </div>
+
+    <!-- ===================== INFO ===================== -->
+    <div id="info-modal">
+        <div id="info-card">
+            <button class="close" id="info-close">&times;</button>
+            <h2>TALEE SEMI — semi da coltivare</h2>
+
+            <p class="todo">DA MODIFICARE — Informazioni generali sulla mappa
+                <em>Che cos'è questo archivio, per chi è pensato, su quale territorio insiste e con quale
+                intenzione nasce.</em></p>
+
+            <p class="todo">DA MODIFICARE — Informazioni generali sui dati
+                <em>Da dove arrivano gli alberi e le aree verdi, che cosa mostrano e — soprattutto — che cosa
+                non mostrano. Perché il verde privato manca, perché gli alberi sono quelli in manutenzione.</em></p>
+
+            <p class="todo">DA MODIFICARE — Come si usa la mappa
+                <em>Navigazione, selezione di un punto, lettura delle tre sezioni, ricerca di un indirizzo.</em></p>
+
+            <p class="todo">DA MODIFICARE — Quali dati si possono conoscere
+                <em>Che cosa si legge nella scheda di un albero, quali confronti la mappa permette di fare.</em></p>
+
+            <p class="todo">DA MODIFICARE — Memoria e voci di quartiere
+                <em>Che tipo di contributo si chiede, come viene conservato, cosa significa pubblico o privato.</em></p>
+
+            <div class="legend">
+                <span><i style="background:#386641;"></i> Parco, bosco</span>
+                <span><i style="background:#5A9450;"></i> Giardino, verde di quartiere</span>
+                <span><i style="background:#7FA85C;"></i> Impianto sportivo</span>
+                <span><i style="background:#6A994E;"></i> Altro verde comunale</span>
+                <span><i style="background:#A7C957;"></i> Albero in manutenzione</span>
+                <span><i style="background:#BC4749;"></i> Punto con memorie raccolte</span>
+                <span><i style="background:#F2E8CF;"></i> Edificato (quota di gronda)</span>
+            </div>
+
+            <div class="src">
+                Dati: Comune di Bologna — Open Data (alberi in manutenzione; Carta Tecnica Comunale, edifici
+                volumetrici; unità gestionali del verde; quartieri di Bologna). Confine di San Lazzaro di Savena:
+                OpenStreetMap. Basemap CARTO Voyager su OpenStreetMap. Rilievo: Mapzen/AWS terrain tiles.
+            </div>
+        </div>
+    </div>
+
+    <div id="toasts"></div>
+
+    <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+    // =============================================================================
+    // TALEE SEMI — motore applicativo
+    // =============================================================================
+    
+    import * as THREE from 'three';
+    
+    // ----------------------------------------------------------------- COSTANTI
+    
+    const VOYAGER = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+    const ODS = 'https://opendata.comune.bologna.it';
+
+    // =========================================================================
+    // MODALITÀ — è l'unica riga che cambia tra i due file.
+    //   'consultazione' → versione pubblica: sola lettura, legge i dati congelati
+    //                     in dati/ e le memorie da contributi.geojson.
+    //   'studio'        → versione locale degli amministratori: archivio su disco,
+    //                     inserimento di memorie e talee, pubblicazione.
+    // =========================================================================
+    const MODALITA = 'consultazione';
+    const STUDIO = MODALITA === 'studio';
+    
+    // Fuoco: Fossolo · Due Madonne (coordinate della vista indicata sul portale Open Data)
+    // Salus Space è il centro dell'area a fuoco: da qui si misura il raggio di 2,5 km
+    // che decide quali dati vengono caricati e quale porzione di mappa resta in chiaro.
+    const FOCUS = [11.401307713214708, 44.48383988820271];
+    const AREA_RADIUS_M = 2500;
+
+    // Limite invalicabile della vista: Bologna e il confine orientale con San Lazzaro.
+    const BOLOGNA_BOUNDS = [[11.2000, 44.3800], [11.5500, 44.5700]];
+    const MIN_ZOOM = 12.0;
+    
+    const DS_TREES = 'alberi-manutenzioni';
+    const DS_BUILDINGS = 'c_a944ctc_edifici_pl';   // CTC edifici volumetrici: gronda + piede = altezza reale
+    const DS_GREEN = 'un_gest';                    // unità gestionali (aree verdi in manutenzione)
+    const DS_DISTRICTS = 'quartieri-di-bologna';
+    
+    // Punti notevoli aggiunti a mano al progetto
+    const SITES = [
+        { id: 'site_salus', name: 'Salus Space', lng: 11.401307713214708, lat: 44.48383988820271,
+          note: 'Spazio polifunzionale pubblico, nato da un progetto europeo di rigenerazione: abitare, lavoro, cultura e cura condivisi.' }
+    ];
+    
+    const ROLE_LABELS = {
+        memoria: 'MEMORIA', cura: 'CURA', incontro: 'INCONTRO',
+        ombra: 'OMBRA', allarme: 'ALLARME', futuro: 'FUTURO'
+    };
+    
+    // ----------------------------------------------------------------- UTILITÀ
+    
+    const $ = (id) => document.getElementById(id);
+    
+    function esc(t) {
+        if (t === null || t === undefined) return '';
+        return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+    
+    function toast(msg, kind) {
+        const box = document.createElement('div');
+        box.className = 'toast';
+        const icon = kind === 'error' ? 'error_outline' : 'eco';
+        box.innerHTML = `<span class="material-icons" style="font-size:17px;">${icon}</span>${esc(msg)}`;
+        $('toasts').appendChild(box);
+        setTimeout(() => box.classList.add('show'), 10);
+        setTimeout(() => { box.classList.remove('show'); setTimeout(() => box.remove(), 400); }, 3400);
+    }
+    
+    function status(text) { const el = $('sr-status'); if (el) el.textContent = text; }
+    
+    function throttle(fn, ms) {
+        let last = 0;
+        return function (...a) {
+            const now = performance.now();
+            if (now - last >= ms) { last = now; fn.apply(this, a); }
+        };
+    }
+    
+    function hashInt(s) {
+        let h = 0; s = String(s || 'x');
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+        return Math.abs(h);
+    }
+    
+    // Offset in metri rispetto all'origine di scena (approssimazione valida su scala urbana)
+    function offsetMeters(lng, lat) {
+        const mLat = 110540, mLng = 111320 * Math.cos(FOCUS[1] * Math.PI / 180);
+        return { east: (lng - FOCUS[0]) * mLng, north: (lat - FOCUS[1]) * mLat };
+    }
+
+    // Centro del rettangolo di ingombro: basta a decidere se un poligono cade
+    // dentro o fuori l'area a fuoco, senza calcolare un vero centroide.
+    function bboxCenter(geom) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const walk = (a) => {
+            if (typeof a[0] === 'number') {
+                if (a[0] < minX) minX = a[0];
+                if (a[0] > maxX) maxX = a[0];
+                if (a[1] < minY) minY = a[1];
+                if (a[1] > maxY) maxY = a[1];
+            } else { for (const x of a) walk(x); }
+        };
+        walk(geom.coordinates);
+        return [(minX + maxX) / 2, (minY + maxY) / 2];
+    }
+
+    function inFocus(lngLat) {
+        const { east, north } = offsetMeters(lngLat[0], lngLat[1]);
+        return Math.hypot(east, north) <= AREA_RADIUS_M;
+    }
+
+    // Anello del cerchio a fuoco, riusato dalla maschera e dal suo bordo.
+    function focusRing(steps = 128) {
+        const mLat = 110540, mLng = 111320 * Math.cos(FOCUS[1] * Math.PI / 180);
+        const ring = [];
+        for (let i = 0; i <= steps; i++) {
+            const a = (i / steps) * Math.PI * 2;
+            ring.push([FOCUS[0] + Math.cos(a) * AREA_RADIUS_M / mLng,
+                       FOCUS[1] + Math.sin(a) * AREA_RADIUS_M / mLat]);
+        }
+        return ring;
+    }
+    
+    // ----------------------------------------------------------------- CLIENT OPEN DATA
+    // Il portale espone due generazioni di API. Provo la v2.1 e, se lo schema non
+    // risponde come previsto, ricado sulla v1: così il codice regge eventuali
+    // cambi di endpoint senza rompersi.
+    
+    const ODS_PAGE = 100;        // massimo consentito per pagina dalla API v2.1
+    const ODS_PARALLEL = 6;      // pagine richieste insieme
+
+    // Scarica un dataset filtrato sul raggio del fuoco. Le pagine partono a gruppi
+    // invece che una alla volta: su 6000 alberi significa una decina di attese
+    // invece di sessanta in fila.
+    async function odsFetch(dataset, { radius = AREA_RADIUS_M, limit = 1000, where = null } = {}) {
+        const clauses = [`within_distance(geo_point_2d, geom'POINT(${FOCUS[0]} ${FOCUS[1]})', ${radius}m)`];
+        if (where) clauses.push(where);
+        const w = encodeURIComponent(clauses.join(' and '));
+
+        // --- tentativo 1: API v2.1
+        try {
+            const first = await odsPageV21(dataset, w, 0);
+            if (first.length) {
+                const rows = first.slice();
+                let done = first.length < ODS_PAGE;
+                for (let off = ODS_PAGE; !done && off < limit; off += ODS_PAGE * ODS_PARALLEL) {
+                    const batch = [];
+                    for (let k = 0; k < ODS_PARALLEL && off + k * ODS_PAGE < limit; k++) {
+                        batch.push(odsPageV21(dataset, w, off + k * ODS_PAGE));
+                    }
+                    const pages = await Promise.all(batch);
+                    pages.forEach(pg => { rows.push(...pg); if (pg.length < ODS_PAGE) done = true; });
+                }
+                return rows;
+            }
+        } catch (e) { console.warn('[ODS v2.1]', dataset, e.message); }
+
+        // --- tentativo 2: API v1 (geofilter.distance), anch'essa in parallelo
+        try {
+            const batch = [];
+            for (let start = 0; start < limit; start += 1000) {
+                const url = `${ODS}/api/records/1.0/search/?dataset=${dataset}` +
+                    `&geofilter.distance=${FOCUS[1]},${FOCUS[0]},${radius}` +
+                    `&rows=${Math.min(1000, limit - start)}&start=${start}`;
+                batch.push(
+                    fetch(url)
+                        .then(r => (r.ok ? r.json() : { records: [] }))
+                        .then(j => (j.records || []).map(rec => Object.assign({}, rec.fields, { _id: rec.recordid })))
+                        .catch(() => [])
+                );
+            }
+            return (await Promise.all(batch)).flat();
+        } catch (e) { console.warn('[ODS v1]', dataset, e.message); }
+
+        return [];
+    }
+
+    async function odsPageV21(dataset, whereEncoded, offset) {
+        const url = `${ODS}/api/explore/v2.1/catalog/datasets/${dataset}/records` +
+            `?where=${whereEncoded}&limit=${ODS_PAGE}&offset=${offset}`;
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        return (j.results || []).map((rec, i) =>
+            Object.assign({}, rec, { _id: rec.recordid || `${dataset}_${offset + i}` }));
+    }
+
+    // ----------------------------------------------------------------- ISTANTANEA DEI DATI
+    // In consultazione la mappa legge i file congelati nella cartella dati/: si
+    // apre in un paio di secondi e non dipende dal portale Open Data. Se non li
+    // trova, ripiega sulle API come fa la versione di studio.
+
+    const SNAP = { alberi: null, verde: null, edifici: null, confini: null };
+    const EMPTY_FC = () => ({ type: 'FeatureCollection', features: [] });
+
+    async function fetchLocal(path) {
+        const r = await fetch(path, { cache: 'no-cache' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    }
+
+    async function fromSnapshot(file) {
+        if (STUDIO) return null;
+        try {
+            const j = await fetchLocal(`dati/${file}`);
+            const n = Array.isArray(j) ? j.length : ((j && j.features) || []).length;
+            return n ? j : null;
+        } catch (e) { return null; }
+    }
+
+    // Per i poligoni l'endpoint "exports" è molto meglio della paginazione a 100
+    // record: restituisce l'intero risultato in una chiamata sola, senza tetti.
+    async function odsGeoJSON(dataset, { radius = null, where = null } = {}) {
+        const clauses = [];
+        if (radius) clauses.push(`within_distance(geo_point_2d, geom'POINT(${FOCUS[0]} ${FOCUS[1]})', ${radius}m)`);
+        if (where) clauses.push(where);
+        const q = clauses.length ? `?where=${encodeURIComponent(clauses.join(' and '))}` : '';
+        const r = await fetch(`${ODS}/api/explore/v2.1/catalog/datasets/${dataset}/exports/geojson${q}`);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        if (!j || !Array.isArray(j.features)) throw new Error('export senza features');
+        return j.features;
+    }
+
+    // I nomi dei campi variano tra dataset e versioni: li cerco per pattern.
+    function pick(rec, patterns) {
+        const keys = Object.keys(rec || {});
+        for (const p of patterns) {
+            const k = keys.find(k => p.test(k));
+            if (k && rec[k] !== null && rec[k] !== '' && rec[k] !== undefined) return rec[k];
+        }
+        return null;
+    }
+    
+    function num(v) {
+        if (v === null || v === undefined) return NaN;
+        return parseFloat(String(v).replace(',', '.'));
+    }
+    
+    function coordsOf(rec) {
+        const p = pick(rec, [/^geo_point_2d$/, /geo_point/i, /coordinate/i]);
+        if (p) {
+            if (Array.isArray(p) && p.length === 2) return [p[1], p[0]];              // [lat, lng]
+            if (typeof p === 'object' && p.lon !== undefined) return [p.lon, p.lat];
+            if (typeof p === 'object' && p.longitude !== undefined) return [p.longitude, p.latitude];
+            if (typeof p === 'string' && p.includes(',')) {
+                const [a, b] = p.split(',').map(Number); return [b, a];
+            }
+        }
+        const shape = geometryOf(rec);
+        if (shape && shape.type === 'Point') return shape.coordinates;
+        return null;
+    }
+    
+    function geometryOf(rec) {
+        const g = pick(rec, [/^geo_shape$/, /geo_shape/i, /^geometry$/i, /shape/i]);
+        if (!g) return null;
+        if (g.type === 'Feature') return g.geometry;
+        if (g.type && g.coordinates) return g;
+        if (g.geometry) return g.geometry;
+        return null;
+    }
+    
+    // ----------------------------------------------------------------- MAPPA
+    
+    const map = new maplibregl.Map({
+        container: 'map',
+        style: VOYAGER,
+        center: FOCUS,
+        zoom: 14.2,
+        pitch: 62,
+        bearing: -18,
+        maxPitch: 82,
+        minZoom: MIN_ZOOM,
+        maxBounds: BOLOGNA_BOUNDS,   // la vista non esce mai da Bologna
+        antialias: true
+    });
+    
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 110, unit: 'metric' }), 'bottom-right');
+    
+    // Ricerca limitata al riquadro comunale.
+    const geocoder = {
+        forwardGeocode: async (config) => {
+            const features = [];
+            try {
+                const vb = `${BOLOGNA_BOUNDS[0][0]},${BOLOGNA_BOUNDS[1][1]},${BOLOGNA_BOUNDS[1][0]},${BOLOGNA_BOUNDS[0][1]}`;
+                const r = await fetch('https://nominatim.openstreetmap.org/search?format=geojson&limit=5&bounded=1' +
+                    `&viewbox=${vb}&q=${encodeURIComponent(config.query)}`);
+                const j = await r.json();
+                (j.features || []).forEach(f => {
+                    const c = f.bbox
+                        ? [f.bbox[0] + (f.bbox[2] - f.bbox[0]) / 2, f.bbox[1] + (f.bbox[3] - f.bbox[1]) / 2]
+                        : f.geometry.coordinates;
+                    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: c },
+                        place_name: f.properties.display_name, properties: f.properties, center: c, place_type: ['place'] });
+                });
+            } catch (e) { console.warn(e); }
+            return { features };
+        }
+    };
+    // Il campo di ricerca vive dentro la barra in alto, impilato sotto il marchio:
+    // non può più finire sopra (o sotto) la targhetta di stato, qualunque
+    // lunghezza abbia il testo.
+    const geocoderCtrl = new MaplibreGeocoder(geocoder, {
+        maplibregl, placeholder: 'CERCA A BOLOGNA', marker: false, showResultsWhileTyping: true, limit: 5
+    });
+    try {
+        $('geo-slot').appendChild(geocoderCtrl.onAdd(map));
+    } catch (e) {
+        console.warn('[geocoder] innesto nella barra non riuscito, uso il controllo standard', e);
+        map.addControl(geocoderCtrl, 'top-left');
+    }
+    
+    function addTerrain() {
+        if (!map.getSource('dem')) {
+            map.addSource('dem', {
+                type: 'raster-dem',
+                tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+                encoding: 'terrarium', tileSize: 256, maxzoom: 14, minzoom: 1,
+                attribution: '&copy; Mapzen, &copy; OpenStreetMap'
+            });
+        }
+        let firstSymbol;
+        for (const l of (map.getStyle().layers || [])) { if (l.type === 'symbol') { firstSymbol = l.id; break; } }
+        if (!map.getLayer('hills')) {
+            map.addLayer({
+                id: 'hills', type: 'hillshade', source: 'dem',
+                paint: { 'hillshade-shadow-color': '#4a5c40', 'hillshade-exaggeration': 0.4,
+                         'hillshade-highlight-color': 'rgba(255,255,255,.45)' }
+            }, firstSymbol);
+        }
+        try { map.setTerrain({ source: 'dem', exaggeration: 1.15 }); } catch (e) { /* noop */ }
+        if (!map.getLayer('sky')) {
+            map.addLayer({ id: 'sky', type: 'sky',
+                paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0, 88], 'sky-atmosphere-sun-intensity': 11 } });
+        }
+    }
+    
+    // ----------------------------------------------------------------- CONFINE SAVENA
+    // Il quartiere è il fuoco: dentro resta leggibile, fuori si smorza con una maschera.
+    
+    // Tutti i quartieri di Bologna in tratteggio sottile, con etichetta discreta,
+    // più il confine comunale di San Lazzaro di Savena — che negli open data
+    // bolognesi non c'è, perché è un altro comune.
+
+    function basemapFont() {
+        for (const l of (map.getStyle().layers || [])) {
+            const f = l.layout && l.layout['text-font'];
+            if (Array.isArray(f) && f.length) return f;
+        }
+        return ['Open Sans Regular'];
+    }
+
+    function districtName(props) {
+        const n = pick(props || {}, [/nome_quartiere/i, /^quartiere$/i, /denominazione/i, /^nome/i, /quartiere/i]);
+        return String(n || '').replace(/^quartiere\s+/i, '').trim();
+    }
+
+    async function loadBoundaries() {
+        const snap = await fromSnapshot('confini.geojson');
+        const feats = snap ? snap.features.slice() : [];
+
+        if (!snap) {
+            try {
+                const gj = await odsGeoJSON(DS_DISTRICTS);
+                gj.forEach(f => {
+                    if (!f.geometry) return;
+                    feats.push({ type: 'Feature', geometry: f.geometry,
+                        properties: { nome: districtName(f.properties) || 'Quartiere', tipo: 'quartiere' } });
+                });
+            } catch (e) {
+                console.warn('[quartieri] export non disponibile, ripiego sui record', e.message);
+                try {
+                    const r = await fetch(`${ODS}/api/explore/v2.1/catalog/datasets/${DS_DISTRICTS}/records?limit=50`);
+                    const j = await r.json();
+                    (j.results || []).forEach(rec => {
+                        const g = geometryOf(rec);
+                        if (g) feats.push({ type: 'Feature', geometry: g,
+                            properties: { nome: districtName(rec) || 'Quartiere', tipo: 'quartiere' } });
+                    });
+                } catch (e2) { console.warn('[quartieri]', e2.message); }
+            }
+
+            // San Lazzaro di Savena: confine amministrativo da OpenStreetMap.
+            try {
+                const r = await fetch('https://nominatim.openstreetmap.org/search?format=geojson&polygon_geojson=1&limit=1&q=' +
+                    encodeURIComponent('San Lazzaro di Savena, Bologna, Italia'));
+                const j = await r.json();
+                const f = (j.features || [])[0];
+                if (f && f.geometry) {
+                    feats.push({ type: 'Feature', geometry: f.geometry,
+                        properties: { nome: 'San Lazzaro di Savena', tipo: 'comune' } });
+                }
+            } catch (e) { console.warn('[San Lazzaro]', e.message); }
+        }
+
+        if (!feats.length) return 0;
+        SNAP.confini = { type: 'FeatureCollection', features: feats };
+
+        map.addSource('confini', { type: 'geojson', data: SNAP.confini });
+
+        map.addLayer({
+            id: 'confini-line', type: 'line', source: 'confini',
+            paint: {
+                'line-color': '#386641',
+                'line-width': ['case', ['==', ['get', 'tipo'], 'comune'], 1.4, 0.9],
+                'line-opacity': 0.55,
+                'line-dasharray': [2, 3]
+            }
+        });
+
+        map.addLayer({
+            id: 'confini-label', type: 'symbol', source: 'confini',
+            layout: {
+                'text-field': ['get', 'nome'], 'text-font': basemapFont(), 'text-size': 10.5,
+                'text-letter-spacing': 0.18, 'text-transform': 'uppercase', 'text-max-width': 9,
+                'text-padding': 6
+            },
+            paint: {
+                'text-color': '#22301c', 'text-opacity': 0.72,
+                'text-halo-color': '#F2E8CF', 'text-halo-width': 1.6
+            }
+        });
+
+        return feats.length;
+    }
+
+    // Maschera: il mondo intero meno il cerchio a fuoco. Fuori resta tutto
+    // leggibile ma smorzato; dentro, i colori pieni.
+    function addFocusMask() {
+        const ring = focusRing();
+        const outer = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+
+        map.addSource('focus-mask', { type: 'geojson', data: {
+            type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [outer, ring] } } });
+        map.addLayer({ id: 'focus-mask', type: 'fill', source: 'focus-mask',
+            paint: { 'fill-color': '#F2E8CF', 'fill-opacity': 0.58 } });
+
+        map.addSource('focus-edge', { type: 'geojson', data: {
+            type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } } });
+        map.addLayer({ id: 'focus-edge', type: 'line', source: 'focus-edge',
+            paint: { 'line-color': '#386641', 'line-width': 1.2, 'line-opacity': 0.38, 'line-dasharray': [1, 3] } });
+    }
+
+    // ----------------------------------------------------------------- EDIFICI 3D CON ALTEZZA REALE
+    // La Carta Tecnica Comunale porta quota di gronda e quota al piede per ogni
+    // edificio: la differenza è l'altezza vera, molto più affidabile dei tag OSM,
+    // che a Bologna sono quasi sempre assenti.
+    
+    function ctcHeight(rec) {
+        const gronda = num(pick(rec, [/gronda/i, /q_gro/i, /quota_g/i]));
+        const piede = num(pick(rec, [/piede/i, /q_pie/i, /quota_p/i, /^quota_base/i]));
+        if (!isNaN(gronda) && !isNaN(piede) && gronda > piede) return Math.max(2.5, Math.min(140, gronda - piede));
+    
+        const alt = num(pick(rec, [/^altezza/i, /^alt(_|$)/i, /^h_/i, /height/i]));
+        if (!isNaN(alt) && alt > 1.5 && alt < 140) return alt;
+    
+        const piani = num(pick(rec, [/piani/i, /levels/i]));
+        if (!isNaN(piani) && piani > 0) return piani * 3.1;
+    
+        return 8.5;
+    }
+    
+    async function loadBuildings() {
+        const snap = await fromSnapshot('edifici.geojson');
+        let features = snap ? snap.features : null;
+
+        if (!features) {
+            let raw = [];
+            try {
+                raw = (await odsGeoJSON(DS_BUILDINGS, { radius: AREA_RADIUS_M }))
+                    .map(f => ({ geom: f.geometry, props: f.properties || {} }));
+            } catch (e) {
+                console.warn('[edifici] export non disponibile, ripiego sui record', e.message);
+                raw = (await odsFetch(DS_BUILDINGS, { radius: AREA_RADIUS_M, limit: 40000 }))
+                    .map(rec => ({ geom: geometryOf(rec), props: rec }));
+            }
+            features = [];
+            raw.forEach(({ geom, props }) => {
+                if (!geom || !/Polygon/.test(geom.type)) return;
+                features.push({ type: 'Feature', geometry: geom, properties: { h: ctcHeight(props) } });
+            });
+        }
+
+        if (!features.length) { console.warn('CTC edifici: nessun risultato'); return 0; }
+        SNAP.edifici = { type: 'FeatureCollection', features };
+
+        map.addSource('buildings', { type: 'geojson', data: SNAP.edifici });
+        map.addLayer({
+            id: 'buildings-3d', type: 'fill-extrusion', source: 'buildings',
+            paint: {
+                'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'h'],
+                    3, '#F7F1E0', 12, '#F2E8CF', 26, '#DDD0AE', 45, '#C3B58F'],
+                'fill-extrusion-height': ['get', 'h'],
+                'fill-extrusion-base': 0,
+                'fill-extrusion-opacity': 0.94,
+                'fill-extrusion-vertical-gradient': true
+            }
+        });
+        return features.length;
+    }
+    
+    // ----------------------------------------------------------------- AREE VERDI (in evidenza, sempre attive)
+    
+    // Tre verdi per tre famiglie di spazio, ordinati dal più "naturale" al più
+    // di servizio. Il verde più luminoso resta agli alberi, così restano
+    // leggibili sopra qualsiasi superficie.
+    const GREEN_COLORS = { parco: '#386641', giardino: '#5A9450', sport: '#7FA85C', altro: '#6A994E' };
+
+    function greenCategory(classe, nome) {
+        const s = `${classe} ${nome}`.toUpperCase();
+        if (/PARCO|BOSCO|COLLINA|GIARDINO STORICO/.test(s)) return 'parco';
+        if (/SPORT|IMPIANT|CAMPO|PISCINA|STADIO/.test(s)) return 'sport';
+        if (/GIARDIN|AIUOL|SCUOL|SCOLAST|NIDO|QUARTIERE/.test(s)) return 'giardino';
+        return 'altro';
+    }
+
+    async function loadGreen() {
+        const snap = await fromSnapshot('verde.geojson');
+        let features = snap ? snap.features : null;
+
+        if (!features) {
+            let raw = [];
+            try {
+                raw = (await odsGeoJSON(DS_GREEN)).map(f => ({ geom: f.geometry, props: f.properties || {} }));
+            } catch (e) {
+                console.warn('[verde] export non disponibile, ripiego sui record', e.message);
+                raw = (await odsFetch(DS_GREEN, { radius: 14000, limit: 30000 }))
+                    .map(rec => ({ geom: geometryOf(rec), props: rec }));
+            }
+            features = [];
+            raw.forEach(({ geom, props }) => {
+                if (!geom || !/Polygon/.test(geom.type)) return;
+                const classe = String(pick(props, [/classe/i, /tipo/i, /categoria/i]) || '');
+                const nome = String(pick(props, [/denominazione/i, /^nome/i, /descrizione/i]) || '');
+                features.push({ type: 'Feature', geometry: geom, properties: {
+                    cat: greenCategory(classe, nome), nome, focus: inFocus(bboxCenter(geom))
+                } });
+            });
+        }
+
+        if (!features.length) { console.warn('Aree verdi: nessun risultato'); return 0; }
+        SNAP.verde = { type: 'FeatureCollection', features };
+
+        map.addSource('green', { type: 'geojson', data: SNAP.verde });
+
+        const byCat = ['match', ['get', 'cat'],
+            'parco', GREEN_COLORS.parco,
+            'giardino', GREEN_COLORS.giardino,
+            'sport', GREEN_COLORS.sport,
+            GREEN_COLORS.altro];
+
+        // Due layer con filtro invece di un'opacità data-driven: stesso risultato,
+        // nessuna dipendenza dal supporto delle proprietà variabili.
+        map.addLayer({
+            id: 'green-fill-out', type: 'fill', source: 'green',
+            filter: ['!=', ['get', 'focus'], true],
+            paint: { 'fill-color': byCat, 'fill-opacity': 0.2 }
+        });
+
+        map.addLayer({
+            id: 'green-fill', type: 'fill', source: 'green',
+            filter: ['==', ['get', 'focus'], true],
+            paint: { 'fill-color': byCat, 'fill-opacity': 0.82 }
+        });
+
+        map.addLayer({
+            id: 'green-edge', type: 'line', source: 'green',
+            filter: ['==', ['get', 'focus'], true],
+            paint: { 'line-color': '#2c4f2f', 'line-width': 1, 'line-opacity': 0.45 }
+        });
+
+        return features.length;
+    }
+    
+    // ----------------------------------------------------------------- ALBERI: DATI
+    
+    let trees = [];                 // record normalizzati del censimento
+    const treeIndex = new Map();    // id -> indice nell'array
+    
+    // La classe di altezza del censimento è testuale ("da 6 a 12 m", "6-12"…):
+    // ne ricavo un valore in metri leggendo i numeri presenti.
+    function heightFromClass(v, id) {
+        const s = String(v || '');
+        const nums = (s.match(/\d+([.,]\d+)?/g) || []).map(x => parseFloat(x.replace(',', '.')));
+        if (nums.length >= 2) return (nums[0] + nums[1]) / 2;
+        if (nums.length === 1) return nums[0];
+        return 7 + (hashInt(id) % 500) / 100;   // valore plausibile e stabile per esemplare
+    }
+    
+    function normalizeTree(rec, i) {
+        const c = coordsOf(rec);
+        if (!c) return null;
+        // Id ricavato dalle coordinate: resta lo stesso anche se cambia l'API,
+        // così i contributi restano legati al loro albero.
+        const id = `alb_${c[0].toFixed(6)}_${c[1].toFixed(6)}`;
+        const specie = pick(rec, [/specie/i, /^nome_scient/i, /essenza/i, /^albero/i]) || 'Specie non indicata';
+        const clH = pick(rec, [/^cl_h$/i, /classe.*alt/i, /^altezza/i]);
+        const clCirc = pick(rec, [/circonf/i, /^classe$/i, /^cl_c/i]);
+        const dimora = pick(rec, [/dimora/i]);
+        const pregio = pick(rec, [/pregio/i]);
+        const impianto = pick(rec, [/impianto/i, /piantum/i, /^data/i]);
+        const zona = pick(rec, [/zona_di_prossimita/i, /zona/i]);
+        const area = pick(rec, [/area_statistica/i]);
+        const quartiere = pick(rec, [/quartiere/i]);
+        const distanza = pick(rec, [/distanza/i]);
+    
+        return {
+            id, lng: c[0], lat: c[1],
+            specie: String(specie), clH: clH ? String(clH) : null, clCirc: clCirc ? String(clCirc) : null,
+            dimora: dimora ? String(dimora) : null, pregio: pregio ? String(pregio) : null,
+            impianto: impianto ? String(impianto) : null, zona: zona ? String(zona) : null,
+            area: area ? String(area) : null, quartiere: quartiere ? String(quartiere) : null,
+            distanza: distanza ? String(distanza) : null,
+            h: Math.max(3, Math.min(28, heightFromClass(clH, id)))
+        };
+    }
+    
+    async function loadTrees() {
+        const snap = await fromSnapshot('alberi.json');
+
+        if (snap) {
+            trees = snap;
+        } else {
+            let recs = [];
+            try {
+                recs = (await odsGeoJSON(DS_TREES, { radius: AREA_RADIUS_M })).map(f => {
+                    const c = f.geometry && f.geometry.coordinates;
+                    return Object.assign({}, f.properties, c ? { geo_point_2d: [c[1], c[0]] } : {});
+                });
+            } catch (e) {
+                console.warn('[alberi] export non disponibile, ripiego sui record', e.message);
+                recs = await odsFetch(DS_TREES, { radius: AREA_RADIUS_M, limit: 20000 });
+            }
+            trees = recs.map(normalizeTree).filter(Boolean);
+        }
+
+        SNAP.alberi = trees;
+        treeIndex.clear();
+        trees.forEach((t, i) => treeIndex.set(t.id, i));
+        return trees.length;
+    }
+    
+    // ----------------------------------------------------------------- ALBERI: SCENA 3D
+    // Un solo custom layer three.js dentro il contesto WebGL della mappa.
+    // Migliaia di alberi resi con due InstancedMesh (fusto + chioma): una sola
+    // draw call per tipo, così la scena resta fluida anche con l'intero censimento.
+    
+    let scene, camera, renderer, treeTrunks, treeCanopies;
+    const fullMatrix = new THREE.Matrix4();
+    const _model = new THREE.Matrix4(), _scaleVec = new THREE.Vector3();
+    let hoverIdx = -1, selectedIdx = -1;
+    let sceneReady = false;
+    
+    const COLOR_LEAF = new THREE.Color('#A7C957');       // albero censito
+    const COLOR_LEAF_ALT = new THREE.Color('#93B94D');   // stessa famiglia, mezzo tono più fondo
+    const COLOR_VOICED = new THREE.Color('#BC4749');     // albero che custodisce voci
+    const COLOR_HOVER = new THREE.Color('#DCE9B0');      // sfioramento
+    const COLOR_SELECT = new THREE.Color('#F2E8CF');     // selezione: crema, massimo stacco sul verde
+    
+    // Le quote del terreno costano: le chiedo una volta per cella di ~10 m e le
+    // riuso per tutti gli alberi che ci cadono dentro.
+    const elevCache = new Map();
+
+    function elevationAt(lng, lat) {
+        const k = `${lng.toFixed(4)}|${lat.toFixed(4)}`;
+        let v = elevCache.get(k);
+        if (v === undefined) {
+            try { v = map.queryTerrainElevation([lng, lat]) || 0; } catch (e) { v = 0; }
+            elevCache.set(k, v);
+        }
+        return v;
+    }
+
+    // Origine della scena: calcolata quando si (ri)costruiscono le geometrie,
+    // non a ogni fotogramma.
+    let originY = 0, originMerc = null, meterScale = 1;
+
+    function updateOrigin() {
+        originY = elevationAt(FOCUS[0], FOCUS[1]);
+        originMerc = maplibregl.MercatorCoordinate.fromLngLat(FOCUS, originY);
+        meterScale = originMerc.meterInMercatorCoordinateUnits();
+    }
+
+    function buildTreeMeshes() {
+        if (!scene || !trees.length) return;
+        [treeTrunks, treeCanopies].forEach(m => {
+            if (!m) return;
+            scene.remove(m);
+            m.geometry.dispose();
+            m.material.dispose();
+        });
+
+        updateOrigin();
+
+        const n = trees.length;
+        const trunkGeo = new THREE.CylinderGeometry(0.16, 0.24, 1, 6);
+        trunkGeo.translate(0, 0.5, 0);                       // base a y=0: scala = altezza fusto
+        const canopyGeo = new THREE.IcosahedronGeometry(1, 1);
+
+        treeTrunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5c4a33 }), n);
+        treeCanopies = new THREE.InstancedMesh(canopyGeo, new THREE.MeshLambertMaterial({ flatShading: true }), n);
+        treeTrunks.frustumCulled = false;
+        treeCanopies.frustumCulled = false;
+
+        const dummy = new THREE.Object3D();
+
+        trees.forEach((t, i) => {
+            const { east, north } = offsetMeters(t.lng, t.lat);
+            const y = elevationAt(t.lng, t.lat) - originY;
+            const trunkH = t.h * 0.42;
+            const crownR = Math.max(1.4, t.h * 0.31);
+
+            t._east = east; t._north = north; t._y = y; t._crownY = y + trunkH + crownR * 0.75; t._crownR = crownR;
+
+            dummy.position.set(east, y, north);
+            dummy.rotation.set(0, 0, 0);
+            dummy.scale.set(1, trunkH, 1);
+            dummy.updateMatrix();
+            treeTrunks.setMatrixAt(i, dummy.matrix);
+
+            dummy.position.set(east, t._crownY, north);
+            dummy.rotation.set(0, (hashInt(t.id) % 360) * Math.PI / 180, 0);
+            dummy.scale.set(crownR, crownR * 0.88, crownR);
+            dummy.updateMatrix();
+            treeCanopies.setMatrixAt(i, dummy.matrix);
+
+            treeCanopies.setColorAt(i, canopyColor(t, i));
+        });
+
+        treeTrunks.instanceMatrix.needsUpdate = true;
+        treeCanopies.instanceMatrix.needsUpdate = true;
+        if (treeCanopies.instanceColor) treeCanopies.instanceColor.needsUpdate = true;
+        treeTrunks.computeBoundingSphere();
+        treeCanopies.computeBoundingSphere();
+
+        scene.add(treeTrunks);
+        scene.add(treeCanopies);
+        sceneReady = true;
+        map.triggerRepaint();
+    }
+
+    function canopyColor(t, i) {
+        if (i === selectedIdx) return COLOR_SELECT;
+        if (i === hoverIdx) return COLOR_HOVER;
+        if (voicesFor(t.id).length) return COLOR_VOICED;
+        return (hashInt(t.id) % 2) ? COLOR_LEAF : COLOR_LEAF_ALT;
+    }
+
+    // Ricoloro solo le istanze che cambiano davvero: riscrivere migliaia di
+    // colori a ogni movimento del mouse era il costo più inutile della scena.
+    function refreshCanopy(indices) {
+        if (!treeCanopies) return;
+        let touched = false;
+        indices.forEach(i => {
+            if (i === undefined || i === null || i < 0 || i >= trees.length) return;
+            treeCanopies.setColorAt(i, canopyColor(trees[i], i));
+            touched = true;
+        });
+        if (touched && treeCanopies.instanceColor) {
+            treeCanopies.instanceColor.needsUpdate = true;
+            map.triggerRepaint();
+        }
+    }
+
+    // Ricolorazione completa: serve solo quando cambia l'archivio.
+    function repaintCanopyColors() {
+        if (!treeCanopies) return;
+        trees.forEach((t, i) => treeCanopies.setColorAt(i, canopyColor(t, i)));
+        if (treeCanopies.instanceColor) treeCanopies.instanceColor.needsUpdate = true;
+        map.triggerRepaint();
+    }
+
+    const treeLayer = {
+        id: 'talee-3d', type: 'custom', renderingMode: '3d',
+    
+        onAdd(m, gl) {
+            camera = new THREE.Camera();
+            scene = new THREE.Scene();
+            scene.rotateX(Math.PI / 2);
+            scene.scale.multiply(new THREE.Vector3(1, 1, -1));
+    
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x74805e, 1.25));
+            const sun = new THREE.DirectionalLight(0xfff2dd, 1.05);
+            sun.position.set(-70, 110, 50);
+            scene.add(sun);
+    
+            renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+            renderer.autoClear = false;
+    
+            if (trees.length) buildTreeMeshes();
+        },
+    
+        render(gl, args) {
+            const arr = Array.isArray(args) ? args
+                : (args && args.defaultProjectionData && args.defaultProjectionData.mainMatrix) || args;
+
+            if (!originMerc) updateOrigin();
+
+            _model.makeTranslation(originMerc.x, originMerc.y, originMerc.z)
+                .scale(_scaleVec.set(meterScale, -meterScale, meterScale));
+
+            fullMatrix.fromArray(arr).multiply(_model);
+            camera.projectionMatrix = fullMatrix;
+
+            renderer.resetState();
+            renderer.render(scene, camera);
+        }
+    };
+    
+    // ----------------------------------------------------------------- SELEZIONE 3D (raycasting)
+    
+    const raycaster = new THREE.Raycaster();
+    const _rInv = new THREE.Matrix4(), _rInvScene = new THREE.Matrix4();
+    const _rA = new THREE.Vector3(), _rB = new THREE.Vector3(), _rDir = new THREE.Vector3();
+    
+    function pickTree(point, includeTrunks = true) {
+        if (!sceneReady || !treeCanopies) return -1;
+        const canvas = map.getCanvas();
+        const ndcX = (point.x / canvas.clientWidth) * 2 - 1;
+        const ndcY = -((point.y / canvas.clientHeight) * 2 - 1);
+
+        const inv = _rInv.copy(fullMatrix).invert();
+        const a = _rA.set(ndcX, ndcY, -1).applyMatrix4(inv);
+        const b = _rB.set(ndcX, ndcY, 1).applyMatrix4(inv);
+
+        scene.updateMatrixWorld(true);
+        const invScene = _rInvScene.copy(scene.matrixWorld).invert();
+        a.applyMatrix4(invScene); b.applyMatrix4(invScene);
+
+        raycaster.set(a, _rDir.copy(b).sub(a).normalize());
+        const hits = raycaster.intersectObject(treeCanopies, false);
+        if (hits.length && hits[0].instanceId !== undefined) return hits[0].instanceId;
+
+        // Il fusto è un bersaglio minuscolo: lo interrogo solo al clic.
+        if (!includeTrunks || !treeTrunks) return -1;
+        const hitsT = raycaster.intersectObject(treeTrunks, false);
+        if (hitsT.length && hitsT[0].instanceId !== undefined) return hitsT[0].instanceId;
+        return -1;
+    }
+    
+    // ----------------------------------------------------------------- ORBITA ATTORNO AL PUNTO
+    // Alla selezione la camera si porta sull'albero e comincia a girargli intorno.
+    // Ritmo volutamente sostenuto: l'oggetto va letto da tutti i lati in fretta.
+    
+    let orbitOn = false, orbitRAF = null, orbitLast = 0;
+    const ORBIT_SPEED = 9;    // gradi al secondo
+    
+    function startOrbit(center, zoom = 18.8) {
+        stopOrbit();
+        map.flyTo({ center, zoom, pitch: 70, bearing: map.getBearing() + 25, duration: 1100, essential: true });
+        setTimeout(() => {
+            orbitOn = true;
+            orbitLast = performance.now();
+            const step = (now) => {
+                if (!orbitOn) return;
+                const dt = (now - orbitLast) / 1000;
+                orbitLast = now;
+                map.setBearing((map.getBearing() + ORBIT_SPEED * dt) % 360);
+                orbitRAF = requestAnimationFrame(step);
+            };
+            orbitRAF = requestAnimationFrame(step);
+        }, 1150);
+    }
+    
+    function stopOrbit() {
+        orbitOn = false;
+        if (orbitRAF) cancelAnimationFrame(orbitRAF);
+        orbitRAF = null;
+    }
+    
+    // ----------------------------------------------------------------- ARCHIVIO LOCALE (contributi)
+    
+    const GEOJSON_NAME = 'contributi.geojson';
+    const DIR_IMG = ['MEDIA', 'images'], DIR_AUD = ['MEDIA', 'audio'], DIR_VID = ['MEDIA', 'video'];
+    
+    let dirHandle = null, fileHandle = null;
+    let voicesFC = { type: 'FeatureCollection', features: [] };
+    let objectUrls = [];      // media dell'archivio, vivi finché la sessione dura
+    let previewUrls = [];     // anteprime della modale, buttate alla chiusura
+
+    function trackPreview(url) { previewUrls.push(url); return url; }
+    function clearPreviews() {
+        previewUrls.forEach(u => URL.revokeObjectURL(u));
+        previewUrls = [];
+        ['prev-image', 'prev-video', 'prev-audio'].forEach(id => $(id).removeAttribute('src'));
+    }
+    
+    // Indice targetId → voci. Senza, ogni ricolorazione scorreva l'intero
+    // archivio una volta per albero.
+    let voicesByTarget = new Map();
+
+    function reindexVoices() {
+        voicesByTarget = new Map();
+        for (const f of (voicesFC.features || [])) {
+            const id = f.properties && f.properties.targetId;
+            if (!id) continue;
+            const list = voicesByTarget.get(id);
+            if (list) list.push(f); else voicesByTarget.set(id, [f]);
+        }
+    }
+
+    function voicesFor(targetId) {
+        return voicesByTarget.get(targetId) || [];
+    }
+    
+    async function ensureDir(root, parts) {
+        let cur = root;
+        for (const p of parts) cur = await cur.getDirectoryHandle(p, { create: true });
+        return cur;
+    }
+    
+    async function writeBlob(dir, name, blob) {
+        const fh = await dir.getFileHandle(name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+    }
+    
+    async function readBlob(relPath) {
+        const parts = relPath.split('/').filter(Boolean);
+        let cur = dirHandle;
+        for (let i = 0; i < parts.length - 1; i++) cur = await cur.getDirectoryHandle(parts[i]);
+        return (await cur.getFileHandle(parts[parts.length - 1])).getFile();
+    }
+    
+    async function persist() {
+        if (!fileHandle) return;
+        const w = await fileHandle.createWritable();
+        await w.write(new Blob([JSON.stringify(voicesFC, null, 2)], { type: 'application/geo+json' }));
+        await w.close();
+    }
+    
+    async function hydrateMedia() {
+        objectUrls.forEach(u => URL.revokeObjectURL(u));
+        objectUrls = [];
+        for (const f of voicesFC.features || []) {
+            const m = f.properties && f.properties.media;
+            if (!m || !m.path) continue;
+            try {
+                const url = URL.createObjectURL(await readBlob(m.path));
+                objectUrls.push(url);
+                f.properties._url = url;
+            } catch (e) { f.properties._url = null; }
+        }
+    }
+    
+    // In consultazione le memorie arrivano da un file statico accanto alla mappa.
+    // I media stanno nella cartella MEDIA: il percorso relativo è già l'URL buono.
+    async function loadPublicVoices() {
+        try {
+            const fc = await fetchLocal('contributi.geojson');
+            voicesFC = (fc && Array.isArray(fc.features)) ? fc : EMPTY_FC();
+        } catch (e) {
+            voicesFC = EMPTY_FC();
+        }
+        (voicesFC.features || []).forEach(f => {
+            const m = f.properties && f.properties.media;
+            if (m && m.path) f.properties._url = m.path;
+        });
+        reindexVoices();
+        repaintCanopyColors();
+        renderSiteMarkers();
+        return (voicesFC.features || []).length;
+    }
+
+    async function writeJSON(dir, name, data) {
+        await writeBlob(dir, name, new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    }
+
+    function istruzioni(memorie, media) {
+        return [
+            'TALEE SEMI — cartella di pubblicazione',
+            'Generata il ' + new Date().toLocaleString('it-IT'),
+            '',
+            `Contiene ${memorie} memorie pubbliche e ${media} file multimediali,`,
+            'più l\'istantanea dei dati comunali in dati/.',
+            'Le memorie private NON sono qui: restano soltanto nel tuo archivio.',
+            '',
+            'COME AGGIORNARE LA MAPPA ONLINE',
+            '1. Apri il repository GitHub della mappa di consultazione.',
+            '2. Trascina il CONTENUTO di questa cartella nella radice del repository,',
+            '   confermando la sovrascrittura dei file con lo stesso nome.',
+            '3. Conferma la modifica (commit).',
+            '4. Dopo un minuto circa il sito pubblico mostra i nuovi contenuti.',
+            '',
+            'Il file index.html del sito non va toccato: cambiano solo i dati.'
+        ].join('\n');
+    }
+
+    // Prepara la cartella da caricare online: dati congelati, memorie pubbliche
+    // e copia dei soli media che possono uscire dall'archivio.
+    async function publish() {
+        if (!dirHandle) { toast('Apri prima l\'archivio.', 'error'); return; }
+        try {
+            toast('Preparo la pubblicazione…');
+            const pub = await ensureDir(dirHandle, ['pubblicazione']);
+            const dati = await ensureDir(dirHandle, ['pubblicazione', 'dati']);
+
+            await writeJSON(dati, 'alberi.json', SNAP.alberi || []);
+            await writeJSON(dati, 'verde.geojson', SNAP.verde || EMPTY_FC());
+            await writeJSON(dati, 'edifici.geojson', SNAP.edifici || EMPTY_FC());
+            await writeJSON(dati, 'confini.geojson', SNAP.confini || EMPTY_FC());
+
+            const pubbliche = (voicesFC.features || [])
+                .filter(f => f.properties && f.properties.privacy !== 'private');
+
+            const puliti = pubbliche.map(f => {
+                const props = Object.assign({}, f.properties);
+                delete props._url;
+                return { type: 'Feature', id: f.id, geometry: f.geometry, properties: props };
+            });
+            await writeJSON(pub, 'contributi.geojson', { type: 'FeatureCollection', features: puliti });
+
+            let media = 0;
+            for (const f of pubbliche) {
+                const m = f.properties.media;
+                if (!m || !m.path) continue;
+                try {
+                    const blob = await readBlob(m.path);
+                    const parts = m.path.split('/').filter(Boolean);
+                    const dest = await ensureDir(dirHandle, ['pubblicazione', ...parts.slice(0, -1)]);
+                    await writeBlob(dest, parts[parts.length - 1], blob);
+                    media++;
+                } catch (e) { console.warn('media non copiato:', m.path, e.message); }
+            }
+
+            await writeBlob(pub, 'LEGGIMI.txt', new Blob([istruzioni(puliti.length, media)], { type: 'text/plain' }));
+            toast(`Pubblicazione pronta: ${puliti.length} memorie, ${media} file.`);
+        } catch (e) {
+            console.error(e);
+            toast('Pubblicazione non riuscita.', 'error');
+        }
+    }
+
+    async function openArchive() {
+        if (!window.showDirectoryPicker) {
+            toast('Per salvare serve Chrome o Edge: questo browser non apre cartelle locali.', 'error');
+            return;
+        }
+        try {
+            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            await ensureDir(dirHandle, ['MEDIA']);
+            await ensureDir(dirHandle, DIR_IMG);
+            await ensureDir(dirHandle, DIR_AUD);
+            await ensureDir(dirHandle, DIR_VID);
+    
+            fileHandle = await dirHandle.getFileHandle(GEOJSON_NAME, { create: true });
+            const txt = await (await fileHandle.getFile()).text();
+            voicesFC = txt.trim() ? JSON.parse(txt) : { type: 'FeatureCollection', features: [] };
+            if (!Array.isArray(voicesFC.features)) voicesFC = { type: 'FeatureCollection', features: [] };
+            reindexVoices();
+    
+            await hydrateMedia();
+            repaintCanopyColors();
+            renderSiteMarkers();
+            toast(`Archivio aperto: ${voicesFC.features.length} voci.`);
+            if (selectedIdx >= 0) renderTab(currentTab);
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;
+            console.error(e);
+            toast('Non riesco ad aprire la cartella.', 'error');
+        }
+    }
+    
+    // ----------------------------------------------------------------- SOTTO-ARCHIVIO (sidebar)
+    
+    let currentTarget = null;   // { kind:'tree'|'site'|'point', id, name, lng, lat, data }
+    let currentTab = 'scheda';
+    
+    function openTarget(target) {
+        currentTarget = target;
+        currentTab = 'scheda';
+        $('sidebar').classList.add('open');
+        $('sidebar').setAttribute('aria-hidden', 'false');
+    
+        $('sb-title').textContent = target.name;
+        const bits = [];
+        if (target.kind === 'tree') {
+            const t = target.data;
+            if (t.clH) bits.push(`<span class="badge ghost">H ${esc(t.clH)}</span>`);
+            if (t.dimora) bits.push(`<span class="badge ghost">${esc(t.dimora)}</span>`);
+            if (t.pregio && /s[iì]|1|true/i.test(t.pregio)) bits.push('<span class="badge seed">DI PREGIO</span>');
+            if (t.zona) bits.push(esc(t.zona));
+        } else if (target.kind === 'site') {
+            bits.push('<span class="badge seed">LUOGO</span>');
+        } else {
+            bits.push('<span class="badge">NUOVA TALEA</span>');
+        }
+        $('sb-meta').innerHTML = bits.join(' ');
+    
+        document.querySelectorAll('.sb-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'scheda'));
+        renderTab('scheda');
+        startOrbit([target.lng, target.lat], target.kind === 'tree' ? 18.9 : 17.8);
+    }
+    
+    function closeSidebar() {
+        $('sidebar').classList.remove('open');
+        $('sidebar').setAttribute('aria-hidden', 'true');
+        stopOrbit();
+        if (selectedIdx >= 0) { const prev = selectedIdx; selectedIdx = -1; refreshCanopy([prev]); }
+        currentTarget = null;
+    }
+    
+    function row(k, v) {
+        if (v === null || v === undefined || v === '') return '';
+        return `<div class="data-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
+    }
+    
+    function renderTab(tab) {
+        currentTab = tab;
+        if (!currentTarget) return;
+        const body = $('sb-body');
+        const voices = voicesFor(currentTarget.id);
+        $('tab-count').textContent = voices.length;
+    
+        if (tab === 'scheda') {
+            if (currentTarget.kind === 'tree') {
+                const t = currentTarget.data;
+                body.innerHTML = `
+                    <p class="todo" style="margin-top:0;">DA MODIFICARE — Che cosa dice questa scheda
+                        <em>Come leggere i campi del censimento comunale, che cosa significano classe di altezza,
+                        dimora, albero di pregio, e che cosa non ci si deve aspettare di trovare qui.</em></p>
+                    ${row('Specie', t.specie)}
+                    ${row('Classe di altezza', t.clH)}
+                    ${row('Classe di circonferenza', t.clCirc)}
+                    ${row('Dimora', t.dimora)}
+                    ${row('Albero di pregio', t.pregio)}
+                    ${row('Data di impianto', t.impianto)}
+                    ${row('Distanza fabbricati', t.distanza)}
+                    ${row('Zona di prossimità', t.zona)}
+                    ${row('Area statistica', t.area)}
+                    ${row('Quartiere', t.quartiere)}
+                    ${row('Coordinate', `${t.lat.toFixed(5)}, ${t.lng.toFixed(5)}`)}
+                    ${row('Altezza stimata in scena', `${t.h.toFixed(1)} m`)}
+                `;
+            } else if (currentTarget.kind === 'site') {
+                body.innerHTML = `<p style="line-height:1.8; margin-top:0;">${esc(currentTarget.data.note)}</p>
+                    ${row('Coordinate', `${currentTarget.lat.toFixed(5)}, ${currentTarget.lng.toFixed(5)}`)}`;
+            } else {
+                body.innerHTML = `<p class="empty" style="margin-top:0;">Punto libero scelto sulla mappa.
+                    Non appartiene al censimento: la sua scheda sei tu a scriverla, nelle voci.</p>
+                    ${row('Coordinate', `${currentTarget.lat.toFixed(5)}, ${currentTarget.lng.toFixed(5)}`)}`;
+            }
+            return;
+        }
+    
+        if (tab === 'voci') {
+            if (!voices.length) {
+                body.innerHTML = `<p class="todo">DA MODIFICARE — Voci di quartiere
+                    <em>Che cosa si trova in questa sezione: le memorie che altri hanno già lasciato su questo
+                    punto, in testo, foto, audio o video.</em></p>
+                <p class="empty">Nessuna memoria raccolta qui, per ora.
+                    ${dirHandle ? 'Passa alla sezione <strong>Memoria</strong> per lasciare la prima.'
+                                : 'Apri prima l\'archivio, poi potrai lasciarne una.'}</p>`;
+                return;
+            }
+            body.innerHTML = voices.map(f => {
+                const p = f.properties;
+                let media = '';
+                if (p.media && p.type === 'image') media = p._url ? `<img src="${p._url}" alt="">` : '<p class="empty">Immagine non trovata.</p>';
+                if (p.media && p.type === 'audio') media = p._url ? `<audio controls src="${p._url}"></audio>` : '<p class="empty">Audio non trovato.</p>';
+                if (p.media && p.type === 'video') media = p._url ? `<video controls playsinline src="${p._url}"></video>` : '<p class="empty">Video non trovato.</p>';
+                const cap = p.media && p.media.caption ? `<p class="empty" style="margin-top:8px;">${esc(p.media.caption)}</p>` : '';
+                return `<article class="voice">
+                    <div class="who">
+                        <span class="swatch" style="background:${esc(p.color || '#6A994E')}"></span>
+                        ${esc(p.name || 'Anonimo')} · ${esc(ROLE_LABELS[p.role] || p.role || '')}
+                        ${p.privacy === 'private' ? '· <span class="badge ghost">privata</span>' : ''}
+                    </div>
+                    ${p.text ? `<p>“${esc(p.text)}”</p>` : ''}
+                    ${media}${cap}
+                    ${p.emotion ? `<p class="empty" style="margin-top:10px;">emozione: ${esc(p.emotion)}</p>` : ''}
+                </article>`;
+            }).join('');
+            return;
+        }
+    
+        // sezione "Memoria"
+        if (!STUDIO) {
+            body.innerHTML = `<p class="todo">DA MODIFICARE — Come partecipare
+                    <em>Come si lascia una memoria, a chi va inviata, entro quando, con quale liberatoria,
+                    e chi la rilegge prima che compaia sulla mappa.</em></p>
+                <p class="empty">Questa è la mappa di consultazione: le memorie si raccolgono altrove e
+                    vengono aggiunte da chi cura l'archivio.</p>`;
+            return;
+        }
+
+        if (!dirHandle) {
+            body.innerHTML = `<p class="todo">DA MODIFICARE — Memoria
+                    <em>Che cosa si chiede a chi contribuisce, con quale tono, quali domande possono guidare
+                    il racconto, e che cosa succede a ciò che viene lasciato.</em></p>
+                <p class="empty">Per lasciare una memoria serve una cartella d'archivio: testi e media
+                    vengono scritti lì, sul tuo computer.</p>
+                <button class="btn" id="inline-archive">APRI ARCHIVIO</button>`;
+            $('inline-archive').addEventListener('click', openArchive);
+            return;
+        }
+        body.innerHTML = `<p class="todo">DA MODIFICARE — Memoria
+                <em>Che cosa si chiede a chi contribuisce, con quale tono, quali domande possono guidare
+                il racconto, e che cosa succede a ciò che viene lasciato.</em></p>
+            <p class="empty">Aggiungi la tua memoria a <strong>${esc(currentTarget.name)}</strong>.</p>
+            <button class="btn" id="inline-add">LASCIA UNA MEMORIA</button>`;
+        $('inline-add').addEventListener('click', () => openModal(currentTarget));
+    }
+    
+    // ----------------------------------------------------------------- MODALE CONTRIBUTO
+    
+    let modalTarget = null;
+    let mediaType = 'text';
+    let recBlob = null, recorder = null, recChunks = [], recStream = null, recording = false;
+    
+    function openModal(target) {
+        modalTarget = target;
+        $('modal-target').textContent = target.name;
+        $('modal').style.display = 'flex';
+    }
+    
+    function closeModal() {
+        $('modal').style.display = 'none';
+        ['in-name', 'in-emotion', 'in-text', 'cap-image', 'cap-audio', 'cap-video'].forEach(id => { $(id).value = ''; });
+        ['file-image', 'file-audio', 'file-video'].forEach(id => { $(id).value = ''; });
+        $('prev-image').style.display = 'none';
+        $('prev-video').style.display = 'none';
+        $('prev-audio').style.display = 'none';
+        $('in-color').value = '#6A994E';
+        $('in-role').value = 'memoria';
+        $('in-privacy').value = 'public';
+        setMediaType('text');
+        stopStream();
+        clearPreviews();
+        recBlob = null;
+        $('rec-status').textContent = '';
+        $('btn-rec').textContent = 'REGISTRA';
+        recording = false;
+        resetPlantMode();
+    }
+    
+    function setMediaType(t) {
+        mediaType = t;
+        document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+        ['text', 'image', 'audio', 'video'].forEach(k => { $('grp-' + k).style.display = (k === t) ? 'block' : 'none'; });
+    }
+    
+    function stopStream() {
+        if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
+    }
+    
+    async function toggleRec() {
+        if (!recording) {
+            try {
+                recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                recorder = new MediaRecorder(recStream);
+                recChunks = [];
+                recorder.ondataavailable = e => recChunks.push(e.data);
+                recorder.onstop = () => {
+                    recBlob = new Blob(recChunks, { type: 'audio/webm' });
+                    const url = trackPreview(URL.createObjectURL(recBlob));
+                    $('prev-audio').src = url;
+                    $('prev-audio').style.display = 'block';
+                };
+                recorder.start();
+                recording = true;
+                $('btn-rec').textContent = 'FERMA';
+                $('rec-status').innerHTML = '<span class="rec-dot"></span> in registrazione';
+            } catch (e) {
+                toast('Microfono non accessibile.', 'error');
+            }
+        } else {
+            if (recorder) recorder.stop();
+            stopStream();
+            recording = false;
+            $('btn-rec').textContent = 'REGISTRA';
+            $('rec-status').textContent = 'registrazione pronta';
+        }
+    }
+    
+    async function saveVoice() {
+        if (!dirHandle || !fileHandle) { toast('Apri prima l\'archivio.', 'error'); return; }
+        if (!modalTarget) return;
+    
+        const id = `v_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 7)}`;
+        const name = $('in-name').value.trim() || 'Anonimo';
+        const role = $('in-role').value;
+        const color = $('in-color').value;
+        const emotion = $('in-emotion').value.trim();
+        const privacy = $('in-privacy').value;
+    
+        let text = null, media = null;
+    
+        try {
+            if (mediaType === 'text') {
+                text = $('in-text').value.trim();
+                if (!text) { toast('Scrivi qualcosa prima di seminare.', 'error'); return; }
+            }
+    
+            const saveFile = async (parts, input, capId, fallback, extDef, mimeDef) => {
+                const f = input.files && input.files[0];
+                let blob = f || fallback;
+                if (!blob) return null;
+                const ext = f && f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : extDef;
+                const dir = await ensureDir(dirHandle, parts);
+                await writeBlob(dir, `${id}.${ext}`, blob);
+                return { kind: mediaType, path: `${parts.join('/')}/${id}.${ext}`,
+                         caption: $(capId).value.trim() || null, mime: (f && f.type) || mimeDef };
+            };
+    
+            if (mediaType === 'image') media = await saveFile(DIR_IMG, $('file-image'), 'cap-image', null, 'jpg', 'image/jpeg');
+            if (mediaType === 'audio') media = await saveFile(DIR_AUD, $('file-audio'), 'cap-audio', recBlob, 'webm', 'audio/webm');
+            if (mediaType === 'video') media = await saveFile(DIR_VID, $('file-video'), 'cap-video', null, 'mp4', 'video/mp4');
+    
+            if (mediaType !== 'text' && !media) { toast('Scegli un file, oppure passa al testo.', 'error'); return; }
+    
+            const feature = {
+                type: 'Feature', id,
+                geometry: { type: 'Point', coordinates: [modalTarget.lng, modalTarget.lat] },
+                properties: {
+                    targetId: modalTarget.id,
+                    targetKind: modalTarget.kind,
+                    targetName: modalTarget.name,
+                    specie: modalTarget.kind === 'tree' ? modalTarget.data.specie : null,
+                    name, role, color, emotion, privacy, type: mediaType,
+                    text: text || null, media, createdAt: new Date().toISOString()
+                }
+            };
+    
+            voicesFC.features.push(feature);
+            reindexVoices();
+            await persist();
+    
+            if (media) {
+                try {
+                    const url = URL.createObjectURL(await readBlob(media.path));
+                    objectUrls.push(url);
+                    feature.properties._url = url;
+                } catch (e) { feature.properties._url = null; }
+            }
+    
+            repaintCanopyColors();
+            renderSiteMarkers();
+            closeModal();
+    
+            if (currentTarget && currentTarget.id === feature.properties.targetId) {
+                document.querySelectorAll('.sb-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'voci'));
+                renderTab('voci');
+            }
+            toast('Voce seminata nell\'archivio.');
+        } catch (e) {
+            console.error(e);
+            toast('Salvataggio non riuscito.', 'error');
+        }
+    }
+    
+    // ----------------------------------------------------------------- PUNTI NOTEVOLI E TALEE LIBERE
+    
+    let siteMarkers = [];
+    
+    function renderSiteMarkers() {
+        siteMarkers.forEach(m => m.remove());
+        siteMarkers = [];
+    
+        // luoghi del progetto
+        SITES.forEach(s => siteMarkers.push(makeSiteMarker(s.lng, s.lat, s.name, 'place', () =>
+            openTarget({ kind: 'site', id: s.id, name: s.name, lng: s.lng, lat: s.lat, data: s }))));
+    
+        // talee libere già seminate (punti non appartenenti al censimento)
+        const freeIds = new Set();
+        (voicesFC.features || []).forEach(f => {
+            const p = f.properties;
+            if (p.targetKind !== 'point' || freeIds.has(p.targetId)) return;
+            freeIds.add(p.targetId);
+            const [lng, lat] = f.geometry.coordinates;
+            siteMarkers.push(makeSiteMarker(lng, lat, p.targetName || 'Talea', 'eco', () =>
+                openTarget({ kind: 'point', id: p.targetId, name: p.targetName || 'Talea', lng, lat, data: {} })));
+        });
+    }
+    
+    function makeSiteMarker(lng, lat, label, icon, onClick) {
+        const el = document.createElement('div');
+        el.className = 'site-pin';
+        el.title = label;
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', label);
+        el.innerHTML = `<span class="material-icons">${icon}</span>`;
+        el.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } });
+        return new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(map);
+    }
+    
+    let plantMode = false;
+    
+    function startPlant() {
+        if (!dirHandle) { toast('Apri prima l\'archivio: le talee si salvano lì.', 'error'); return; }
+        plantMode = true;
+        document.body.classList.add('adding-mode');
+        $('hint').style.display = 'block';
+        closeSidebar();
+    }
+    
+    function resetPlantMode() {
+        plantMode = false;
+        document.body.classList.remove('adding-mode');
+        $('hint').style.display = 'none';
+    }
+    
+    // ----------------------------------------------------------------- EVENTI
+    
+    map.on('click', (e) => {
+        if (plantMode) {
+            const id = `p_${Date.now().toString(36)}`;
+            const target = { kind: 'point', id, name: 'Nuova talea', lng: e.lngLat.lng, lat: e.lngLat.lat, data: {} };
+            resetPlantMode();
+            openTarget(target);
+            openModal(target);
+            return;
+        }
+        const idx = pickTree(e.point, true);
+        if (idx >= 0) {
+            const prev = selectedIdx;
+            selectedIdx = idx;
+            refreshCanopy([prev, idx]);
+            const t = trees[idx];
+            openTarget({ kind: 'tree', id: t.id, name: t.specie, lng: t.lng, lat: t.lat, data: t });
+        }
+    });
+
+    // Da lontano il puntamento in hover non serve a nulla e costa parecchio:
+    // sotto zoom 15.5 lo sospendo.
+    map.on('mousemove', throttle((e) => {
+        if (plantMode) return;
+        const idx = map.getZoom() < 15.5 ? -1 : pickTree(e.point, false);
+        if (idx !== hoverIdx) {
+            const prev = hoverIdx;
+            hoverIdx = idx;
+            refreshCanopy([prev, idx]);
+            map.getCanvas().style.cursor = idx >= 0 ? 'pointer' : '';
+        }
+    }, 130));
+    
+    // Se l'utente prende in mano la vista, l'orbita automatica si ferma: comanda lui.
+    ['dragstart', 'wheel', 'touchstart'].forEach(ev => map.on(ev, () => { if (orbitOn) stopOrbit(); }));
+    
+    // Le quote arrivano con i tile del rilievo: appena ci sono, ricostruisco le altezze.
+    let terrainSettled = false;
+    map.on('sourcedata', (e) => {
+        if (e.sourceId === 'dem' && e.isSourceLoaded && !terrainSettled && trees.length) {
+            terrainSettled = true;
+            setTimeout(() => { elevCache.clear(); buildTreeMeshes(); }, 400);
+        }
+    });
+    
+    $('btn-enter').addEventListener('click', () => {
+        document.body.classList.add('view-map');
+        setTimeout(() => {
+            map.resize();
+            map.easeTo({ zoom: 14.7, pitch: 58, bearing: 12, duration: 3200 });
+        }, 300);
+    });
+    
+    $('brand').addEventListener('click', () => { $('info-modal').style.display = 'flex'; });
+    $('brand').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('info-modal').style.display = 'flex'; });
+    $('info-close').addEventListener('click', () => { $('info-modal').style.display = 'none'; });
+    $('sb-close').addEventListener('click', closeSidebar);
+    if (STUDIO) {
+        $('btn-archive').addEventListener('click', openArchive);
+        $('btn-publish').addEventListener('click', publish);
+        $('btn-plant').addEventListener('click', startPlant);
+    } else {
+        $('btn-partecipa').addEventListener('click', () => { $('info-modal').style.display = 'flex'; });
+    }
+    $('btn-cancel').addEventListener('click', closeModal);
+    $('btn-save').addEventListener('click', saveVoice);
+    $('btn-rec').addEventListener('click', toggleRec);
+
+    $('legend-toggle').addEventListener('click', () => {
+        const lg = $('legend');
+        const collapsed = lg.classList.toggle('collapsed');
+        $('legend-toggle').setAttribute('aria-expanded', String(!collapsed));
+        lg.querySelector('.material-icons').textContent = collapsed ? 'expand_less' : 'expand_more';
+    });
+    
+    document.querySelectorAll('.sb-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.sb-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderTab(btn.dataset.tab);
+        });
+    });
+    
+    document.querySelectorAll('.type-btn').forEach(btn => {
+        btn.addEventListener('click', () => setMediaType(btn.dataset.type));
+    });
+    
+    // Aree di caricamento file: click e trascinamento.
+    function wireDrop(dropId, inputId, previewId) {
+        const drop = $(dropId), input = $(inputId), prev = previewId ? $(previewId) : null;
+        drop.addEventListener('click', () => input.click());
+        drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.style.borderColor = '#14210f'; });
+        drop.addEventListener('dragleave', () => { drop.style.borderColor = ''; });
+        drop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            drop.style.borderColor = '';
+            if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; input.dispatchEvent(new Event('change')); }
+        });
+        input.addEventListener('change', () => {
+            const f = input.files && input.files[0];
+            if (!f || !prev) return;
+            const url = trackPreview(URL.createObjectURL(f));
+            prev.src = url;
+            prev.style.display = 'block';
+        });
+    }
+    wireDrop('drop-image', 'file-image', 'prev-image');
+    wireDrop('drop-video', 'file-video', 'prev-video');
+    wireDrop('drop-audio', 'file-audio', null);
+    $('file-audio').addEventListener('change', () => {
+        const f = $('file-audio').files[0];
+        if (!f) return;
+        const url = trackPreview(URL.createObjectURL(f));
+        $('prev-audio').src = url;
+        $('prev-audio').style.display = 'block';
+    });
+    
+    window.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if ($('modal').style.display === 'flex') { closeModal(); return; }
+        if ($('info-modal').style.display === 'flex') { $('info-modal').style.display = 'none'; return; }
+        if (plantMode) { resetPlantMode(); return; }
+        closeSidebar();
+    });
+    
+    // ----------------------------------------------------------------- AVVIO
+    
+    // Ordine di disegno: maschera → verde → edifici → confine → alberi.
+    // Serve perché i layer ora arrivano in ordine imprevedibile.
+    function orderLayers() {
+        ['green-fill-out', 'green-fill', 'green-edge', 'buildings-3d',
+         'focus-mask', 'focus-edge', 'confini-line', 'confini-label', 'talee-3d']
+            .filter(id => map.getLayer(id))
+            .forEach(id => map.moveLayer(id));
+    }
+
+    map.on('load', async () => {
+        document.body.classList.add(STUDIO ? 'studio' : 'web');
+        addTerrain();
+        map.addLayer(treeLayer);
+        renderSiteMarkers();
+        reindexVoices();
+        addFocusMask();
+
+        document.body.classList.add('loading');
+        status('Scarico i dati…');
+
+        // I quattro insiemi non dipendono l'uno dall'altro: partono insieme.
+        const [confini, green, buildings, nTrees] = (await Promise.allSettled([
+            loadBoundaries(), loadGreen(), loadBuildings(), loadTrees()
+        ])).map(r => {
+            if (r.status === 'rejected') { console.error(r.reason); return 0; }
+            return r.value || 0;
+        });
+
+        orderLayers();
+        buildTreeMeshes();
+        if (!STUDIO) await loadPublicVoices();
+        document.body.classList.remove('loading');
+
+        if (!nTrees && !green && !buildings) {
+            status('Dati non disponibili — mappa navigabile');
+            toast('Il portale Open Data non risponde. Riprova più tardi.', 'error');
+            return;
+        }
+
+        status(`${nTrees} alberi, ${green} aree verdi, ${buildings} edifici, ${confini} confini`);
+        if (!nTrees) toast('Nessun albero dal portale Open Data: riprova più tardi.', 'error');
+    });
+    
+    // Utile da console per verifiche e integrazioni successive.
+    window.__talee = { map, modalita: MODALITA, trees: () => trees, voices: () => voicesFC, openArchive, publish };
+    </script>
+</body>
+
+</html>

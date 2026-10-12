@@ -15,10 +15,7 @@
     folderBase: '../images/laboratori/',   // relativo a pages/laboratori.html
     folderPrefix: 'LAB',                   // LAB0, LAB1, ...
     posterName: 'locandina',               // locandina.jpg (vedi POSTER_EXT)
-    posterExt: ['jpg', 'jpeg', 'png', 'webp'],
-    // Immagini attuali della pagina: servono per riconoscere i laboratori
-    // e come ripiego se la locandina nuova non è ancora stata caricata.
-    legacyPosterSelector: 'img[src*="images/laboratori/evento"]'
+    posterExt: ['jpg', 'jpeg', 'png', 'webp']
   };
 
   var IMG = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
@@ -212,35 +209,20 @@
   }
 
   function init() {
-    var imgs = document.querySelectorAll(CONFIG.legacyPosterSelector);
+    // Riconosce i laboratori dalle locandine: images/laboratori/LAB<numero>/...
+    var imgs = document.querySelectorAll('img[src*="images/laboratori/LAB"]');
     if (!imgs.length) return;
     buildModal();
 
-    Array.prototype.forEach.call(imgs, function (img, n) {
+    Array.prototype.forEach.call(imgs, function (img) {
+      var m = /LAB(\d+)\//.exec(img.getAttribute('src'));
       var h = nextHeading(img);
-      if (!h) return;
+      if (!m || !h) return;
+      var n = parseInt(m[1], 10);              // numero cartella: LAB0 -> 0
       var title = h.textContent.trim();
-      // Riga del laboratorio: locandina a sinistra (pari) / a destra (dispari)
-      var row = img.parentElement;
-      row.classList.add('lab-item');
-      if (n % 2 === 1) row.classList.add('lab-item--right');
-      var legacy = img.getAttribute('src');
 
-      // Locandina nuova (LABn/locandina.*) con ripiego sulla vecchia immagine
-      var tries = CONFIG.posterExt.map(function (e) {
-        return labFolder(n) + CONFIG.posterName + '.' + e;
-      });
-      var t = 0;
-      img.onerror = function () {
-        t++;
-        if (t < tries.length) img.src = tries[t];
-        else { img.onerror = null; img.src = legacy; }
-      };
-      img.src = tries[0];
+      function open() { openLab(n, title); }
 
-      function open() {
-        openLab(n, title);
-      }
       h.classList.add('lab-clickable');
       h.setAttribute('role', 'button');
       h.setAttribute('tabindex', '0');
@@ -250,8 +232,6 @@
       h.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
       });
-      img.classList.add('lab-clickable');
-      img.addEventListener('click', open);
     });
   }
 

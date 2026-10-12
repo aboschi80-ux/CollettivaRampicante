@@ -49,7 +49,7 @@ html.lab-modal-open { overflow: hidden; }
 
 /* ===== Layout righe laboratori: locandina intera, alternata sinistra/destra ===== */
 .lab-item { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
-  gap: 30px !important; align-items: flex-start !important; }
+  gap: 30px !important; align-items: center !important; }
 .lab-item--right { flex-direction: row-reverse !important; }
 .lab-item > img { flex: 0 0 300px !important; width: 300px !important; height: auto !important;
   max-height: none !important; object-fit: contain !important;

@@ -7,6 +7,31 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/laboratori-modal.css">
+    <style>
+        /* Layout eventi: zig-zag (dispari = immagine a sinistra, pari = a destra) */
+        .lab-event {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            margin: 50px 0;
+        }
+        .lab-event:nth-of-type(even) { flex-direction: row-reverse; }
+        .lab-img {
+            flex: 0 0 280px;
+            width: 280px;
+            max-width: 100%;
+            height: auto;            /* mantiene le proporzioni: locandina intera */
+            object-fit: contain;
+            border-radius: 8px;
+        }
+        .lab-body { flex: 1; min-width: 0; }
+        @media (max-width: 768px) {
+            .lab-event,
+            .lab-event:nth-of-type(even) { flex-direction: column; align-items: center; }
+            .lab-img { flex: 0 0 auto; width: 100%; max-width: 360px; }
+            .lab-body { width: 100%; }
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -36,9 +61,9 @@
             <p>TALEE è un ciclo di laboratori creativi gratuiti che offre percorsi di co-creazione per vivere lo spazio urbano come luogo di incontro tra comunità, arte, cultura e socialità. Ogni incontro è aperto a tutte e tutti!</p>
 
             <!-- EVENTO 1 - Immagine SINISTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap;">
-                <img src="../images/laboratori/evento1_12_aprile.jpg" alt="Talee in Festa" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB0/locandina.jpg" alt="Talee in Festa" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🌱 Talee in Festa</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Domenica 12 Aprile 2026</span>
@@ -55,9 +80,9 @@
             </div>
 
             <!-- EVENTO 2 - Immagine DESTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap-reverse;">
-                <img src="../images/laboratori/evento2_26_aprile.jpg" alt="Essere una pianta" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB1/locandina.jpg" alt="Essere una pianta" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: E se fossi una pianta?</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Sabato 26 Aprile 2026</span>
@@ -75,9 +100,9 @@
 
 
             <!-- EVENTO 3 - Immagine SINISTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap;">
-                <img src="../images/laboratori/evento3_9_maggio.jpg" alt="Alberi che parlano" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB2/locandina.jpg" alt="Alberi che parlano" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: E se gli alberi parlassero?</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Domenica 9 Maggio 2026</span>
@@ -94,9 +119,9 @@
             </div>
 
             <!-- EVENTO 4 - Immagine DESTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap-reverse;">
-                <img src="../images/laboratori/evento4_24_maggio.jpg" alt="Viaggi di piante" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB3/locandina.jpg" alt="Viaggi di piante" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: E se le piante viaggiassero nel tempo?</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Domenica 24 Maggio 2026</span>
@@ -114,9 +139,9 @@
             </div>
             
             <!-- EVENTO 5 - Immagine SINISTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap;">
-                <img src="../images/laboratori/evento5_7_giugno.jpg" alt="Piante che raccontano" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB4/locandina.jpg" alt="Piante che raccontano" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: E se le piante raccontassero storie?</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Domenica 7 Giugno 2026</span>
@@ -133,9 +158,9 @@
             </div>
 
             <!-- EVENTO 6 - Immagine DESTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap-reverse;">
-                <img src="../images/laboratori/evento6_17_giugno.jpg" alt="Apertivo" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB5/locandina.jpg" alt="Apertivo" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🍺🌱 Aperitiglio </h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i>Mercoledì 17 Giugno 2026</span>
@@ -152,9 +177,9 @@
             </div>
 
             <!-- EVENTO 7 - Immagine SINISTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap;">
-                <img src="../images/laboratori/evento7_19_settembre.jpg" alt="Raccontiamo la nostra pianta" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB6/locandina.jpg" alt="Raccontiamo la nostra pianta" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: E se raccontassimo la nostra pianta?</h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                         <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i> Domenica 19 Settembre 2026</span>
@@ -170,12 +195,12 @@
             </div>
 
             <!-- EVENTO 8 - Immagine DESTRA -->
-            <div style="display: flex; gap: 30px; align-items: flex-start; margin: 50px 0; flex-wrap: wrap-reverse;">
-                <img src="../images/laboratori/evento8_29_settembre.jpg" alt="Mappatura" style="flex: 0 0 250px; height: 250px; object-fit: cover; border-radius: 8px;">
-                <div style="flex: 1; min-width: 300px;">
+            <div class="lab-event">
+                <img src="../images/laboratori/LAB7/locandina.jpg" alt="Mappatura" class="lab-img">
+                <div class="lab-body">
                     <h3 style="color: #7BC043; font-size: 1.8rem; margin-bottom: 10px;">🎨 Laboratorio: Mappatura collettiva </h3>
                     <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
-                        <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i>Martedì 29 Settembre Giugno 2026</span>
+                        <span style="color: #9B59B6; font-weight: 600;"><i class="fas fa-calendar"></i>Martedì 29 Settembre 2026</span>
                         <span style="color: #7BC043; font-weight: 600;"><i class="fas fa-map-marker-alt"></i>SALUS Space, Via Malvezza 2/2</span>
                     </div>
                     <div style="background: rgba(155, 89, 182, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #9B59B6;">

@@ -34,17 +34,24 @@
     <main class="container">
         <section class="content-section">
             <h2>Laboratori e Spazi del Progetto</h2>
-            <p>La mappa interattiva qui sotto mostra la localizzazione di tutti i nostri laboratori TALEE e gli spazi principali dove ci troverai nel quartiere Fossolo-Due Madonne a Bologna.</p>
+            <p>TALEE SEMI è l'archivio 3D del patrimonio arboreo del quartiere Fossolo-Due Madonne a Bologna: alberi, edifici e aree verdi, con le memorie raccolte dalla comunità. Esplora la mappa qui sotto, oppure aprila a schermo intero.</p>
             
-            <!-- MAPPA QGIS2WEB EMBEDDED -->
-            <div style="margin: 40px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <iframe 
-                    src="../mappa-qgis/index.html" 
-                    style="width: 100%; height: 700px; border: none; border-radius: 8px;" 
+            <!-- MAPPA TALEE SEMI (cartella ../mappa/ con index.html, contributi.geojson, dati/, MEDIA/) -->
+            <div style="margin: 30px 0 12px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <iframe
+                    src="../mappa/index.html"
+                    title="Mappa TALEE SEMI - alberi e memorie di Fossolo e Due Madonne"
+                    style="width: 100%; height: 75vh; min-height: 520px; max-height: 900px; border: none; display: block;"
+                    allow="fullscreen; geolocation"
                     allowfullscreen=""
                     loading="lazy">
                 </iframe>
             </div>
+            <p style="text-align: center; margin: 0 0 30px;">
+                <a href="../mappa/index.html" style="color: #9B59B6; font-weight: 600; text-decoration: none;">
+                    <i class="fas fa-expand"></i> Apri la mappa a schermo intero
+                </a>
+            </p>
 
             <div style="margin-top: 40px; padding: 30px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #7BC043;">
                 <h3 style="color: #7BC043; margin-top: 0;">📍 Punti Principali</h3>
@@ -68,8 +75,8 @@
             </div>
 
             <div style="margin-top: 40px; padding: 30px; background: linear-gradient(135deg, rgba(123, 192, 67, 0.1) 0%, rgba(155, 89, 182, 0.1) 100%); border-radius: 8px;">
-                <h3 style="text-align: center; color: #7BC043;">Come Raggiungerci</h3>
-                <p style="text-align: center; color: #666; margin-top: 15px;">Usa la mappa interattiva sopra per visualizzare i percorsi, gli autobus e le migliori modalità di trasporto per raggiungere i nostri spazi.</p>
+                <h3 style="text-align: center; color: #7BC043;">Come usare la mappa</h3>
+                <p style="text-align: center; color: #666; margin-top: 15px;">Usa la mappa interattiva sopra per individuare SALUS Space e il quartiere, e per scoprire gli alberi e le memorie che li legano alla comunità.</p>
                 <p style="text-align: center; color: #666; margin-top: 10px; font-size: 0.9rem;">Per domande sulla localizzazione, scrivi a <a href="mailto:collettivarampicante@gmail.com" style="color: #7BC043; text-decoration: none; font-weight: 600;">collettivarampicante@gmail.com</a></p>
             </div>
         </section>

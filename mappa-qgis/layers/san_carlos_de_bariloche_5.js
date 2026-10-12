@@ -1,1 +1,0 @@
-var json_san_carlos_de_bariloche_5 = {"type":"FeatureCollection","name":"san_carlos_de_bariloche_5","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"id":"1"},"geometry":{"type":"Point","coordinates":[-71.2954689242613,-41.143985080551779]}}]}
