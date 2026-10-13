@@ -132,10 +132,9 @@ function setupGalleryLightbox() {
     const grids = document.querySelectorAll('.gallery-grid');
 
     grids.forEach(grid => {
-        const items = Array.from(grid.querySelectorAll('.gallery-item'));
-        items.forEach((item, idx) => {
-            item.style.cursor = 'pointer';
-            item.addEventListener('click', () => openLightbox(grid, idx));
+        grid.querySelectorAll('.gallery-item img').forEach((img, idx) => {
+            img.parentElement.style.cursor = 'pointer';
+            img.parentElement.addEventListener('click', () => openLightbox(grid, idx));
         });
     });
 }
@@ -206,9 +205,41 @@ function openLightbox(grid, startIndex) {
     show(current);
 }
 
-// Call gallery setup if we're on the gallery page
-if (document.querySelector('.gallery-grid')) {
-    document.addEventListener('DOMContentLoaded', setupGalleryLightbox);
+// ===== Elenco automatico dei file di una cartella (API pubblica di GitHub, 1 sola chiamata) =====
+// listaFile('images/galleria/LAB0') -> ['IMG_1.jpg', 'IMG_2.jpg', ...]
+const EST_MEDIA = { img: /\.(jpe?g|png|webp|gif|avif)$/i, vid: /\.(mp4|webm|mov|m4v)$/i, aud: /\.(mp3|wav|ogg|m4a|aac)$/i };
+let _elencoRepo;
+function listaFile(cartella) {
+    if (!_elencoRepo) {
+        _elencoRepo = fetch('https://api.github.com/repos/aboschi80-ux/CollettivaRampicante/git/trees/main?recursive=1')
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(d => d.tree.filter(f => f.type === 'blob' && f.path.startsWith('images/')).map(f => f.path))
+            .catch(e => { _elencoRepo = null; throw e; });
+    }
+    return _elencoRepo.then(tutti => tutti
+        .filter(p => p.startsWith(cartella + '/') && !p.slice(cartella.length + 1).includes('/'))
+        .map(p => p.slice(cartella.length + 1))
+        .sort((a, b) => a.localeCompare(b, 'it', { numeric: true })));
 }
+
+// ===== Galleria automatica: ogni <div class="gallery-grid" data-cartella="..."> si riempie da sola =====
+document.addEventListener('DOMContentLoaded', () => {
+    const grids = Array.from(document.querySelectorAll('.gallery-grid[data-cartella]'));
+    if (!grids.length) return;
+    Promise.all(grids.map(grid => listaFile(grid.dataset.cartella).then(files => {
+        files = files.filter(f => EST_MEDIA.img.test(f) || EST_MEDIA.vid.test(f));
+        if (!files.length) { grid.style.display = 'block'; grid.textContent = 'Foto in arrivo…'; }
+        files.forEach(f => {
+            const url = '../' + grid.dataset.cartella + '/' + encodeURIComponent(f);
+            const item = grid.appendChild(document.createElement('div'));
+            item.className = 'gallery-item';
+            const m = item.appendChild(document.createElement(EST_MEDIA.vid.test(f) ? 'video' : 'img'));
+            m.src = url;
+            if (m.tagName === 'VIDEO') { m.controls = true; m.preload = 'metadata'; }
+            else { m.alt = f; m.loading = 'lazy'; }
+        });
+    }).catch(() => { grid.style.display = 'block'; grid.textContent = 'Impossibile caricare le foto, riprova tra poco.'; })))
+    .then(setupGalleryLightbox);
+});
 
 console.log('Script caricato correttamente');
